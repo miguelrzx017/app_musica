@@ -1,0 +1,729 @@
+#:import dp kivy.metrics.dp
+#:import sp kivy.metrics.sp
+
+# main.kv - só o VISUAL. Regras: "<NomeDaClasse>:" estiliza a classe do main.py.
+# Indentação = hierarquia. 'root' = widget da regra atual; 'self' = o widget onde
+# a linha está; 'app' = o MainApp (estado do player). dp()/sp() = tamanhos que
+# se adaptam à densidade da tela. Tamanhos de fonte seguem o mockup.
+
+# ---- CORES (R, G, B, opacidade) - mude aqui e vale para o app todo ----
+#:set COR_CINZA (0.55, 0.55, 0.55, 1)
+#:set COR_CARTAO (0.16, 0.16, 0.16, 1)
+#:set COR_DESTAQUE (0.91, 0.12, 0.12, 1)
+#:set COR_LINHA (0.3, 0.3, 0.3, 1)
+
+# ======================================================================
+# FONTE (DM Sans) - registrada no main.py
+# ======================================================================
+<Label>:
+    font_name: "DMSans"
+
+<TextInput>:
+    font_name: "DMSans"
+
+# ======================================================================
+# PEÇAS REUTILIZÁVEIS
+# ======================================================================
+# "@" cria um widget novo combinando comportamentos.
+<BotaoIcone@ButtonBehavior+Image>:
+    size_hint: None, None
+    size: dp(44), dp(44)
+
+# Texto de uma linha, alinhado à esquerda, com "..." se não couber.
+<Texto@Label>:
+    halign: "left"
+    valign: "middle"
+    text_size: self.size
+    shorten: True
+    shorten_from: "right"
+
+# Subtítulo cinza: quebra de linha se precisar e a altura se ajusta ao texto.
+<Subtitulo@Label>:
+    size_hint_y: None
+    height: self.texture_size[1]
+    text_size: self.width, None
+    halign: "left"
+    color: COR_CINZA
+    font_size: "11sp"
+
+<BotaoTexto@ButtonBehavior+Label>:
+    halign: "center"
+
+<BotaoOpcao@ButtonBehavior+Label>:
+    size_hint_y: None
+    height: dp(50)
+    halign: "left"
+    valign: "middle"
+    text_size: self.size
+    font_size: "16sp"
+
+# Imagem com cantos arredondados. A textura (já recortada em "cover") é calculada
+# no main.py (classe ImagemArredondada) e desenhada aqui por um RoundedRectangle.
+# Sem imagem (tex vazio), aparece só o fundo cinza-escuro.
+<ImagemArredondada>:
+    canvas:
+        Color:
+            rgba: (1, 1, 1, 1) if self.tex else COR_CARTAO
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [self.raio]
+            texture: self.tex
+
+# Seta para baixo/esquerda desenhada com linhas (não precisa de arquivo de imagem)
+<IconeChevron@ButtonBehavior+Widget>:
+    size_hint: None, None
+    size: dp(44), dp(44)
+    canvas:
+        Color:
+            rgba: 1, 1, 1, 1
+        Line:
+            points: self.center_x - dp(11), self.center_y + dp(5), self.center_x, self.center_y - dp(6), self.center_x + dp(11), self.center_y + dp(5)
+            width: dp(2)
+            cap: "round"
+            joint: "round"
+
+# As 3 barrinhas (alça da fila)
+<IconeBarras@ButtonBehavior+Widget>:
+    size_hint: None, None
+    size: dp(44), dp(44)
+    canvas:
+        Color:
+            rgba: COR_CINZA
+        RoundedRectangle:
+            pos: self.center_x - dp(10), self.center_y + dp(7)
+            size: dp(20), dp(3)
+            radius: [dp(1.5)]
+        RoundedRectangle:
+            pos: self.center_x - dp(10), self.center_y - dp(1.5)
+            size: dp(20), dp(3)
+            radius: [dp(1.5)]
+        RoundedRectangle:
+            pos: self.center_x - dp(10), self.center_y - dp(10)
+            size: dp(20), dp(3)
+            radius: [dp(1.5)]
+
+<BarraProgresso>:
+    canvas:
+        Color:
+            rgba: 1, 1, 1, .25
+        RoundedRectangle:
+            pos: self.x, self.center_y - dp(2)
+            size: self.width, dp(4)
+            radius: [dp(2)]
+        Color:
+            rgba: 1, 1, 1, 1
+        RoundedRectangle:
+            pos: self.x, self.center_y - dp(2)
+            size: max(self.width * self.fracao, dp(4)), dp(4)
+            radius: [dp(2)]
+        Ellipse:
+            pos: self.x + self.width * self.fracao - dp(7), self.center_y - dp(7)
+            size: dp(14), dp(14)
+
+# Barrinha do que está tocando; aparece no menu e na playlist. Toque = abre o player.
+<MiniPlayer@ButtonBehavior+BoxLayout>:
+    size_hint_y: None
+    height: dp(64) if app.tem_musica else 0
+    opacity: 1 if app.tem_musica else 0
+    disabled: not app.tem_musica
+    padding: dp(18), dp(8)
+    spacing: dp(10)
+    on_release: app.ir("player", "up")
+    canvas.before:
+        Color:
+            rgba: COR_CARTAO
+        RoundedRectangle:
+            pos: self.x + dp(8), self.y + dp(4)
+            size: self.width - dp(16), self.height - dp(8)
+            radius: [dp(14)]
+    ImagemArredondada:
+        size_hint: None, None
+        size: dp(44), dp(44)
+        pos_hint: {"center_y": .5}
+        raio: dp(8)
+        source: app.capa_atual
+    BoxLayout:
+        orientation: "vertical"
+        Texto:
+            text: app.titulo_atual
+            font_size: "15sp"
+            valign: "bottom"
+            color: 1, 1, 1, 1
+        Texto:
+            text: app.artista_atual
+            font_size: "12sp"
+            valign: "top"
+            color: COR_CINZA
+    BotaoIcone:
+        source: "arquivos/icones/pause.png" if app.tocando else "arquivos/icones/play.png"
+        size: dp(36), dp(36)
+        pos_hint: {"center_y": .5}
+        on_release: app.pausar_ou_retomar()
+
+# ======================================================================
+# LINHAS DE LISTA
+# ======================================================================
+# -------- playlist:  1  [capa]  Título / Artista --------
+<LinhaMusica>:
+    size_hint_y: None
+    height: dp(60)
+    padding: dp(4), dp(4)
+    spacing: dp(12)
+    Texto:
+        text: str(root.numero)
+        size_hint_x: None
+        width: dp(28)
+        halign: "center"
+        font_size: "16sp"
+        color: COR_CINZA
+    ImagemArredondada:
+        size_hint: None, None
+        size: dp(46), dp(46)
+        pos_hint: {"center_y": .5}
+        raio: dp(8)
+        source: root.capa
+    BoxLayout:
+        orientation: "vertical"
+        Texto:
+            text: root.titulo
+            font_size: "17sp"
+            valign: "bottom"
+            # a música que está tocando fica vermelha
+            color: COR_DESTAQUE if root.id_musica == app.id_atual else (1, 1, 1, 1)
+        Texto:
+            text: root.artista
+            font_size: "13sp"
+            valign: "top"
+            color: COR_CINZA
+
+# -------- fila ("A Seguir"):  [capa]  Título / Artista   ≡ --------
+<LinhaFila>:
+    size_hint_y: None
+    height: dp(64)
+    padding: 0, dp(4)
+    spacing: dp(12)
+    ImagemArredondada:
+        size_hint: None, None
+        size: dp(54), dp(54)
+        pos_hint: {"center_y": .5}
+        raio: dp(8)
+        source: root.capa
+    BoxLayout:
+        orientation: "vertical"
+        Texto:
+            text: root.titulo
+            font_size: "18sp"
+            valign: "bottom"
+        Texto:
+            text: root.artista
+            font_size: "14sp"
+            valign: "top"
+            color: COR_CINZA
+    IconeBarras:
+        pos_hint: {"center_y": .5}
+        on_release: app.abrir_opcoes_fila(int(root.indice))
+
+# -------- playlist no menu --------
+<CartaoPlaylist>:
+    size_hint_y: None
+    height: dp(124)
+    spacing: dp(14)
+    ImagemArredondada:
+        size_hint: None, None
+        size: dp(124), dp(124)
+        raio: dp(20)
+        source: root.capa
+    BoxLayout:
+        orientation: "vertical"
+        Texto:
+            text: root.nome
+            bold: True
+            font_size: "30sp"
+            valign: "bottom"
+            shorten: False
+            max_lines: 2
+        Texto:
+            text: root.subtitulo
+            font_size: "12sp"
+            valign: "top"
+            color: COR_CINZA
+
+# ======================================================================
+# TELA 1: MENU
+# ======================================================================
+<TelaMenu>:
+    BoxLayout:
+        orientation: "vertical"
+        ScrollView:
+            do_scroll_x: False
+            bar_width: 0
+            BoxLayout:
+                orientation: "vertical"
+                size_hint_y: None
+                height: self.minimum_height
+                padding: dp(16), dp(20), dp(16), dp(16)
+                spacing: dp(6)
+
+                Label:
+                    text: "My Music"
+                    bold: True
+                    font_size: "50sp"
+                    size_hint_y: None
+                    height: dp(84)
+
+                Texto:
+                    text: "Minhas Playlists"
+                    font_name: "DMSansMedium"
+                    font_size: "17sp"
+                    size_hint_y: None
+                    height: dp(30)
+                # as playlists são criadas pelo main.py (TelaMenu.montar)
+                BoxLayout:
+                    id: lista_playlists
+                    orientation: "vertical"
+                    size_hint_y: None
+                    height: self.minimum_height
+                    spacing: dp(10)
+                Widget:
+                    size_hint_y: None
+                    height: dp(10)
+
+                Texto:
+                    text: "Banco de dados"
+                    font_name: "DMSansMedium"
+                    font_size: "17sp"
+                    size_hint_y: None
+                    height: dp(26)
+                Subtitulo:
+                    text: "Artistas - albuns"
+                Widget:
+                    size_hint_y: None
+                    height: dp(4)
+                ImagemArredondada:     # por enquanto só visual (sem função)
+                    size_hint_y: None
+                    height: dp(157)
+                    raio: dp(24)
+                    source: "arquivos/imagens/banco_de_dados.jpg"
+                Widget:
+                    size_hint_y: None
+                    height: dp(10)
+
+                Texto:
+                    text: "Estatísticas"
+                    font_name: "DMSansMedium"
+                    font_size: "17sp"
+                    size_hint_y: None
+                    height: dp(26)
+                Subtitulo:
+                    text: "Musicas mais tocadas - artistas mais ouvidos - Tempo ouvindo música"
+                Widget:
+                    size_hint_y: None
+                    height: dp(4)
+                FloatLayout:           # por enquanto só visual (sem função)
+                    size_hint_y: None
+                    height: dp(99)
+                    canvas.before:
+                        Color:
+                            rgba: .47, .47, .47, 1
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [dp(24)]
+                    Image:
+                        source: "arquivos/icones/estatisticas.png"
+                        size_hint: None, None
+                        size: dp(100), dp(72)
+                        pos_hint: {"center_x": .5, "center_y": .5}
+        MiniPlayer:
+
+# ======================================================================
+# TELA 2: PLAYLIST
+# ======================================================================
+<TelaPlaylist>:
+    BoxLayout:
+        orientation: "vertical"
+        padding: dp(16), dp(10), dp(16), 0
+        spacing: dp(8)
+
+        # toque em "Minhas playlists" para voltar ao menu
+        BotaoTexto:
+            text: "Minhas playlists"
+            size_hint_y: None
+            height: dp(40)
+            font_size: "16sp"
+            color: COR_CINZA
+            on_release: app.voltar_tela()
+
+        # Cabeçalho: capa à esquerda, textos e botões à direita
+        BoxLayout:
+            size_hint_y: None
+            height: dp(136)
+            spacing: dp(14)
+            ImagemArredondada:
+                size_hint: None, None
+                size: dp(124), dp(124)
+                raio: dp(20)
+                source: root.capa_playlist
+            BoxLayout:
+                orientation: "vertical"
+                Texto:
+                    text: root.nome_playlist
+                    bold: True
+                    font_size: "26sp"
+                    valign: "bottom"
+                    shorten: False
+                    max_lines: 2
+                Texto:
+                    text: root.subtitulo
+                    font_size: "12sp"
+                    color: COR_CINZA
+                    size_hint_y: None
+                    height: dp(22)
+                BoxLayout:
+                    size_hint_y: None
+                    height: dp(48)
+                    spacing: dp(10)
+                    BotaoIcone:
+                        source: "arquivos/icones/play.png"
+                        on_release: root.tocar_a_partir_de(0)
+                    BotaoIcone:
+                        source: "arquivos/icones/shuffle.png"
+                        on_release: root.tocar_aleatorio()
+                    BotaoIcone:
+                        source: "arquivos/icones/busca.png"
+                        on_release: root.alternar_busca()
+                    Widget:   # espaçador: empurra os botões para a esquerda
+
+        # Campo de busca: some quando fechado (altura 0)
+        TextInput:
+            id: campo_busca
+            size_hint_y: None
+            height: dp(44) if root.busca_aberta else 0
+            opacity: 1 if root.busca_aberta else 0
+            disabled: not root.busca_aberta
+            multiline: False
+            hint_text: "Buscar na playlist"
+            background_normal: ""
+            background_active: ""
+            background_color: COR_CARTAO
+            foreground_color: 1, 1, 1, 1
+            hint_text_color: COR_CINZA
+            cursor_color: 1, 1, 1, 1
+            padding: dp(14), dp(12)
+            on_text: root.filtrar(self.text)
+
+        # Linha divisória
+        Widget:
+            size_hint_y: None
+            height: dp(1)
+            canvas:
+                Color:
+                    rgba: COR_LINHA
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+
+        # A LISTA. RecycleView só cria os widgets que cabem na tela e os
+        # "recicla" ao rolar - essencial para listas grandes no celular.
+        RecycleView:
+            id: lista
+            viewclass: "LinhaMusica"
+            RecycleBoxLayout:
+                orientation: "vertical"
+                default_size: None, dp(60)
+                default_size_hint: 1, None
+                size_hint_y: None
+                height: self.minimum_height
+
+        MiniPlayer:
+
+# ======================================================================
+# TELA 3: PLAYER (tocando agora)
+# ======================================================================
+<TelaPlayer>:
+    BoxLayout:
+        orientation: "vertical"
+        padding: dp(21), dp(14), dp(21), dp(10)
+
+        # Barra do topo: seta (voltar) | "Tocando agora" + playlist | espaço
+        BoxLayout:
+            size_hint_y: None
+            height: dp(52)
+            IconeChevron:
+                pos_hint: {"center_y": .5}
+                on_release: app.voltar_tela()
+            BoxLayout:
+                orientation: "vertical"
+                Label:
+                    text: "Tocando agora"
+                    font_size: "12sp"
+                    color: COR_CINZA
+                    valign: "bottom"
+                    text_size: self.size
+                    halign: "center"
+                Label:
+                    text: app.origem
+                    font_name: "DMSansMedium"
+                    font_size: "16sp"
+                    color: .78, .78, .78, 1
+                    valign: "top"
+                    text_size: self.size
+                    halign: "center"
+                    shorten: True
+            Widget:
+                size_hint_x: None
+                width: dp(44)
+
+        Widget:
+            size_hint_y: None
+            height: dp(14)
+
+        # Capa quadrada grande (encolhe um pouco em telas baixas)
+        AnchorLayout:
+            id: area_capa
+            size_hint_y: None
+            height: min(self.width, root.height * .46)
+            ImagemArredondada:
+                size_hint: None, None
+                size: min(area_capa.width, area_capa.height), min(area_capa.width, area_capa.height)
+                raio: dp(22)
+                source: app.capa_atual
+
+        Widget:
+            size_hint_y: None
+            height: dp(16)
+
+        Texto:
+            text: app.titulo_atual
+            bold: True
+            font_size: sp(28) if len(self.text) <= 14 else (sp(22) if len(self.text) <= 24 else sp(18))
+            size_hint_y: None
+            height: dp(40)
+        Texto:
+            text: app.artista_atual
+            font_size: "18sp"
+            color: COR_CINZA
+            size_hint_y: None
+            height: dp(28)
+
+        Widget:     # espaço flexível: empurra os controles para baixo
+
+        BarraProgresso:
+            id: barra
+            size_hint_y: None
+            height: dp(28)
+            progresso: min(1, app.posicao / app.duracao) if app.duracao else 0
+
+        BoxLayout:
+            size_hint_y: None
+            height: dp(20)
+            Texto:
+                text: app.formatar_tempo(barra.fracao * app.duracao)
+                font_size: "13sp"
+                color: COR_CINZA
+            Texto:
+                text: app.formatar_tempo(app.duracao)
+                halign: "right"
+                font_size: "13sp"
+                color: COR_CINZA
+
+        # Controles: aleatório | anterior - play/pause - próxima
+        BoxLayout:
+            size_hint_y: None
+            height: dp(84)
+            spacing: dp(22)
+            BotaoIcone:
+                source: "arquivos/icones/shuffle.png"
+                size: dp(34), dp(34)
+                pos_hint: {"center_y": .5}
+                opacity: 1 if app.aleatorio else .45
+                on_release: app.alternar_aleatorio()
+            Widget:
+            BotaoIcone:
+                source: "arquivos/icones/back.png"
+                size: dp(34), dp(34)
+                pos_hint: {"center_y": .5}
+                on_release: app.faixa_anterior()
+            BotaoIcone:
+                source: "arquivos/icones/pause.png" if app.tocando else "arquivos/icones/play.png"
+                size: dp(64), dp(64)
+                pos_hint: {"center_y": .5}
+                on_release: app.pausar_ou_retomar()
+            BotaoIcone:
+                source: "arquivos/icones/advance.png"
+                size: dp(34), dp(34)
+                pos_hint: {"center_y": .5}
+                on_release: app.pular()
+            Widget:
+            Widget:
+                size_hint_x: None
+                width: dp(34)
+
+        # Canto inferior direito: abre a fila
+        BoxLayout:
+            size_hint_y: None
+            height: dp(48)
+            Widget:
+            BotaoIcone:
+                source: "arquivos/icones/queue.png"
+                size: dp(34), dp(34)
+                pos_hint: {"center_y": .5}
+                on_release: app.ir("fila", "left")
+
+# ======================================================================
+# TELA 4: FILA
+# ======================================================================
+# Linha vermelha da música que está tocando (fixa no topo; toque = volta ao player)
+<LinhaAtual@ButtonBehavior+BoxLayout>:
+    spacing: dp(12)
+    on_release: app.voltar_tela()
+    ImagemArredondada:
+        size_hint: None, None
+        size: dp(56), dp(56)
+        pos_hint: {"center_y": .5}
+        raio: dp(8)
+        source: app.capa_atual
+    BoxLayout:
+        orientation: "vertical"
+        Texto:
+            text: app.titulo_atual
+            font_size: "18sp"
+            valign: "bottom"
+            color: COR_DESTAQUE
+        Texto:
+            text: app.artista_atual
+            font_size: "14sp"
+            valign: "top"
+            color: COR_CINZA
+    BotaoIcone:
+        source: "arquivos/icones/pause.png" if app.tocando else "arquivos/icones/play.png"
+        size: dp(48), dp(48)
+        pos_hint: {"center_y": .5}
+        on_release: app.pausar_ou_retomar()
+
+<BotaoAleatorio@ButtonBehavior+BoxLayout>:
+    orientation: "vertical"
+    size_hint: None, None
+    size: dp(140), dp(60)
+    padding: dp(6), dp(8), dp(6), dp(4)
+    canvas.before:
+        Color:
+            rgba: (0.3, 0.3, 0.3, 1) if app.aleatorio else COR_CARTAO
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(18)]
+    Image:
+        source: "arquivos/icones/shuffle.png"
+    Label:
+        text: "Ordem Aleatória"
+        font_size: "13sp"
+        size_hint_y: None
+        height: dp(18)
+
+<TelaFila>:
+    BoxLayout:
+        orientation: "vertical"
+        padding: dp(22), dp(22), dp(22), dp(10)
+        spacing: dp(6)
+
+        Texto:
+            text: "Fila"
+            bold: True
+            font_size: "36sp"
+            size_hint_y: None
+            height: dp(46)
+        BoxLayout:
+            size_hint_y: None
+            height: dp(26)
+            Texto:
+                text: "Tocando agora"
+                font_size: "12sp"
+                color: COR_CINZA
+                size_hint_x: None
+                width: dp(92)
+            Texto:
+                text: app.origem
+                font_name: "DMSansMedium"
+                font_size: "18sp"
+        LinhaAtual:
+            size_hint_y: None
+            height: dp(64) if app.tem_musica else 0
+            opacity: 1 if app.tem_musica else 0
+            disabled: not app.tem_musica
+        Texto:
+            text: "A Seguir"
+            bold: True
+            font_size: "28sp"
+            size_hint_y: None
+            height: dp(52)
+
+        RecycleView:
+            id: lista
+            viewclass: "LinhaFila"
+            RecycleBoxLayout:
+                orientation: "vertical"
+                default_size: None, dp(64)
+                default_size_hint: 1, None
+                size_hint_y: None
+                height: self.minimum_height
+
+        BoxLayout:
+            size_hint_y: None
+            height: dp(70)
+            padding: 0, dp(5)
+            Widget:
+            BotaoAleatorio:
+                pos_hint: {"center_y": .5}
+                on_release: app.alternar_aleatorio()
+            Widget:
+
+# ======================================================================
+# JANELINHA DAS 3 BARRINHAS (opções de uma música da fila)
+# ======================================================================
+<OpcoesFila>:
+    size_hint: .88, None
+    height: dp(300)
+    background: ""
+    background_color: 0, 0, 0, 0
+    overlay_color: 0, 0, 0, .65
+    canvas.before:
+        Color:
+            rgba: .13, .13, .13, 1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(20)]
+    BoxLayout:
+        orientation: "vertical"
+        padding: dp(20), dp(16)
+        spacing: dp(2)
+        Texto:
+            text: root.titulo
+            bold: True
+            font_size: "17sp"
+            size_hint_y: None
+            height: dp(26)
+        Texto:
+            text: root.artista
+            font_size: "13sp"
+            color: COR_CINZA
+            size_hint_y: None
+            height: dp(20)
+        Widget:
+            size_hint_y: None
+            height: dp(8)
+        BotaoOpcao:
+            text: "Tocar a seguir"
+            on_release: root.acao("seguir")
+        BotaoOpcao:
+            text: "Mover para cima"
+            on_release: root.acao("subir")
+        BotaoOpcao:
+            text: "Mover para baixo"
+            on_release: root.acao("descer")
+        BotaoOpcao:
+            text: "Remover da fila"
+            color: COR_DESTAQUE
+            on_release: root.acao("remover")

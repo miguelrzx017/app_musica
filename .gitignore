@@ -1,2 +1,3 @@
-./.projeto.code-workspace
-./__pycache__/
+projeto.code-workspace
+__pycache__/
+*.zip
