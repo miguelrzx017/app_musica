@@ -42,6 +42,32 @@ def criar_fila(musicas, comecar_em=None, aleatorio=False):
     return {"itens": itens, "posicao": posicao, "aleatorio": aleatorio}
 
 
+def reiniciar(fila, ordem_original, aleatorio=False, evitar_id=None):
+    """
+    Reinicia uma fila que chegou ao fim.
+
+    Normal: volta para a primeira música da ordem original.
+    Aleatório: cria um novo embaralhamento e, havendo mais de uma faixa,
+    evita colocar imediatamente a mesma música que acabou de terminar.
+    """
+    itens = list(ordem_original or fila.get("itens", []))
+    if not itens:
+        fila["itens"] = []
+        fila["posicao"] = 0
+        fila["aleatorio"] = aleatorio
+        return None
+
+    if aleatorio:
+        random.shuffle(itens)
+        if evitar_id is not None and len(itens) > 1 and itens[0].get("id") == evitar_id:
+            itens[0], itens[1] = itens[1], itens[0]
+
+    fila["itens"] = itens
+    fila["posicao"] = 0
+    fila["aleatorio"] = aleatorio
+    return musica_atual(fila)
+
+
 def musica_atual(fila):
     """Devolve a música tocando agora (ou None se a fila estiver vazia)."""
     if 0 <= fila["posicao"] < len(fila["itens"]):

@@ -34,6 +34,14 @@ source.exclude_dirs = bin, venv, .venv, kivy_venv, __pycache__, .git, .buildozer
 
 version = 0.1
 
+# Versão do python-for-android (p4a), a ferramenta que empacota o app.
+# A versão mais nova (develop) passou a usar Python 3.14 no Android e quebra
+# o build fora do Linux/Python 3.14. Esta versão é estável e testada com o Kivy.
+p4a.branch = v2024.01.21
+
+# NDK (compilador do Android) compatível com essa versão do p4a
+android.ndk = 25b
+
 # Bibliotecas do app:
 #   python3, kivy -> o básico
 #   sqlite3       -> o banco de dados (db.py usa o módulo sqlite3)
@@ -57,10 +65,10 @@ android.permissions = android.permission.READ_MEDIA_AUDIO, android.permission.RE
 android.api = 33
 android.minapi = 24
 
-# Processadores. arm64-v8a = quase todo celular atual; armeabi-v7a = celulares
-# antigos de 32 bits. Para o build ficar mais rápido e o APK menor, dá para
-# deixar só "arm64-v8a" (se o seu celular for recente).
-android.archs = arm64-v8a, armeabi-v7a
+# Processador do celular. arm64-v8a = quase todo celular atual (build mais
+# rápido, APK menor). Se o seu celular for MUITO antigo (32 bits), troque por
+# "armeabi-v7a" ou use as duas: arm64-v8a, armeabi-v7a
+android.archs = arm64-v8a
 
 # Mantém o backup automático do Android (guarda o seu histórico de reproduções)
 android.allow_backup = True

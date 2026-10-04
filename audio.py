@@ -48,6 +48,7 @@ class MotorKivy:
         self._tocando = False
         self._base = 0.0   # posição (s) no momento em que o relógio foi zerado
         self._t0 = 0.0     # hora (time.monotonic) em que o relógio foi zerado
+        self._started_at = 0.0  # evita detectar falso "fim" logo após play()
         self._avisou = False
 
     # ---------------- abrir / fechar ----------------
@@ -75,21 +76,34 @@ class MotorKivy:
     def parar(self):
         som, self.som = self.som, None
         self._tocando = False
+        self._base = 0.0
+        self._t0 = 0.0
+        self._started_at = 0.0
         if som is not None:
             try:
                 som.stop()
-                som.unload()
-            except Exception as erro:  # nunca derrubar o app por causa do áudio
+            except Exception as erro:
                 print("áudio: erro ao parar:", erro)
+            try:
+                som.unload()
+            except Exception as erro:
+                print("áudio: erro ao descarregar:", erro)
 
     # ---------------- controles ----------------
     def tocar(self):
         if self.som is None:
-            return
-        self._base = 0.0
-        self._t0 = time.monotonic()
-        self._tocando = True
-        self.som.play()
+            return False
+        try:
+            self._base = 0.0
+            self._t0 = time.monotonic()
+            self._started_at = self._t0
+            self._tocando = True
+            self.som.play()
+            return True
+        except Exception as erro:
+            self._tocando = False
+            print("áudio: play falhou:", erro)
+            return False
 
     def pausar(self):
         if self.som is None or not self._tocando:
@@ -100,17 +114,29 @@ class MotorKivy:
 
     def retomar(self):
         if self.som is None or self._tocando:
-            return
+            return False
         if not self.suporta_seek:
             self._base = 0.0  # sem seek não há como continuar: recomeça
         alvo = self._base
-        self._t0 = time.monotonic()
-        self._tocando = True
-        self.som.play()
+        som_atual = self.som
+        try:
+            self._t0 = time.monotonic()
+            self._started_at = self._t0
+            self._tocando = True
+            som_atual.play()
+        except Exception as erro:
+            self._tocando = False
+            print("áudio: retomar falhou:", erro)
+            return False
+
         if self.suporta_seek and alvo > 0.2:
-            # O backend precisa de um instante para "acordar" depois do play();
-            # só então o seek funciona.
-            Clock.schedule_once(lambda dt: self._pular_para(alvo), 0.2)
+            # O callback captura o som original. Se outra música já tiver sido
+            # carregada, ele é ignorado e não faz seek na faixa nova.
+            Clock.schedule_once(
+                lambda dt: self._pular_para(alvo, som_atual),
+                0.2,
+            )
+        return True
 
     def buscar(self, segundos):
         """Arrastou a barra. Devolve False se o backend não consegue pular."""
@@ -124,8 +150,11 @@ class MotorKivy:
         # pausado: o valor fica em _base e é aplicado em retomar()
         return True
 
-    def _pular_para(self, segundos):
+    def _pular_para(self, segundos, som_esperado=None):
         if self.som is None:
+            return
+        # Evita callback atrasado de uma música antiga mexer na música atual.
+        if som_esperado is not None and self.som is not som_esperado:
             return
         try:
             self.som.seek(segundos)
@@ -157,12 +186,27 @@ class MotorKivy:
     def terminou(self):
         if self.som is None or not self._tocando:
             return False
-        # Os backends do Kivy colocam state='stop' sozinhos quando a faixa acaba.
-        if self.som.state == "stop" and time.monotonic() - self._t0 > 1.0:
-            return True
-        # Segurança: se a posição passou da duração, acabou.
+
         dur = self.duracao()
-        return bool(dur) and self.posicao() > dur + 2.0
+        pos = self.posicao()
+
+        # Primeiro usa duração/posição. Isso evita o falso "fim" que pode
+        # acontecer porque alguns backends ainda estão em state='stop' nos
+        # primeiros instantes de uma faixa recém-carregada.
+        if dur:
+            if pos >= max(0.0, dur - 0.35) and self.som.state == "stop":
+                return True
+            if pos > dur + 0.8:
+                return True
+            return False
+
+        # Sem duração conhecida, só aceita state='stop' depois de um intervalo
+        # mínimo desde o início da faixa.
+        return (
+            self.som.state == "stop"
+            and self._started_at
+            and time.monotonic() - self._started_at > 1.2
+        )
 
 
 class MotorAndroid:
@@ -182,14 +226,19 @@ class MotorAndroid:
         mp = self._MediaPlayer()
         try:
             mp.setDataSource(str(caminho))
-            mp.prepare()  # arquivo local: é rápido
+            mp.prepare()  # arquivo local
         except Exception as erro:
             print("áudio: não consegui abrir", caminho, "->", erro)
+            try:
+                mp.reset()
+            except Exception:
+                pass
             try:
                 mp.release()
             except Exception:
                 pass
             return False
+
         self.mp = mp
         self._tocando = False
         return True
@@ -209,9 +258,19 @@ class MotorAndroid:
 
     def tocar(self):
         if self.mp is None:
-            return
-        self._tocando = True
-        self.mp.start()
+            return False
+        try:
+            self.mp.start()
+            self._tocando = True
+            return True
+        except Exception as erro:
+            self._tocando = False
+            print("áudio: play Android falhou:", erro)
+            try:
+                self.mp.reset()
+            except Exception:
+                pass
+            return False
 
     def pausar(self):
         if self.mp is None or not self._tocando:
@@ -224,12 +283,15 @@ class MotorAndroid:
 
     def retomar(self):
         if self.mp is None or self._tocando:
-            return
-        self._tocando = True
+            return False
         try:
             self.mp.start()  # continua exatamente de onde o pause() parou
+            self._tocando = True
+            return True
         except Exception as erro:
-            print("áudio: start falhou:", erro)
+            self._tocando = False
+            print("áudio: start Android falhou:", erro)
+            return False
 
     def buscar(self, segundos):
         if self.mp is None:
@@ -260,8 +322,17 @@ class MotorAndroid:
     def terminou(self):
         if self.mp is None or not self._tocando:
             return False
+
         try:
-            return not self.mp.isPlaying()  # queríamos tocar e parou sozinho = fim
+            dur = self.mp.getDuration() / 1000.0
+            pos = self.mp.getCurrentPosition() / 1000.0
+
+            # MediaPlayer pode responder isPlaying=False nos primeiros
+            # instantes de uma nova faixa. Só considera fim perto da duração.
+            if dur > 0:
+                return pos >= max(0.0, dur - 0.35) and not self.mp.isPlaying()
+
+            return not self.mp.isPlaying()
         except Exception:
             return False
 
