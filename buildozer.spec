@@ -35,8 +35,6 @@ android.allow_backup = True
 
 # Python-for-Android
 p4a.branch = develop
-p4a.commit = d2ee8c5
-
 
 [buildozer]
 
