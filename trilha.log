@@ -1,0 +1,24 @@
+[    0.00s |    0 MB] app iniciando
+[    4.96s |    0 MB] _tocar #1: 'A Alegria do Senhor' (iniciar=True)
+[    5.03s |    0 MB]   motor.carregar(...) começando [MotorPygame]
+[    5.09s |    0 MB]   motor.carregar OK; chamando motor.tocar()
+[    5.09s |    0 MB]   motor.tocar OK (tocando)
+[   13.82s |    0 MB] pular(automatico=False) posicao=0/65
+[   13.82s |    0 MB] _tocar #2: 'Acusador' (iniciar=True)
+[   13.92s |    0 MB]   motor.carregar(...) começando [MotorPygame]
+[   13.93s |    0 MB]   motor.carregar OK; chamando motor.tocar()
+[   13.93s |    0 MB]   motor.tocar OK (tocando)
+[   54.16s |    0 MB] _tocar #3: 'A Ele' (iniciar=True)
+[   54.28s |    0 MB]   motor.carregar(...) começando [MotorPygame]
+[   54.29s |    0 MB]   motor.carregar OK; chamando motor.tocar()
+[   54.29s |    0 MB]   motor.tocar OK (tocando)
+[   57.77s |    0 MB] pular(automatico=False) posicao=2/65
+[   57.77s |    0 MB] _tocar #4: 'Águas Profundas' (iniciar=True)
+[   57.83s |    0 MB]   motor.carregar(...) começando [MotorPygame]
+[   57.84s |    0 MB]   motor.carregar OK; chamando motor.tocar()
+[   57.84s |    0 MB]   motor.tocar OK (tocando)
+[   61.59s |    0 MB] pular(automatico=False) posicao=3/65
+[   61.59s |    0 MB] _tocar #5: 'Colossenses e Suas Linhas de Amor' (iniciar=True)
+[   61.71s |    0 MB]   motor.carregar(...) começando [MotorPygame]
+[   61.73s |    0 MB]   motor.carregar OK; chamando motor.tocar()
+[   61.73s |    0 MB]   motor.tocar OK (tocando)

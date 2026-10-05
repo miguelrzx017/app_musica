@@ -649,3 +649,252 @@ musicas = {
         'capa': 'arquivos/capas_de_album/thalles_ao_vivo.jpg'
     }
 }
+
+# ======================================================================
+# ARTISTAS
+# Dados de apresentação usados pelo player. As chaves de "artistas" são
+# exatamente os nomes usados no campo "artista" de "musicas".
+# ======================================================================
+artistas = {
+    "Fernandinho": {
+        "nome": "Fernandinho",
+        "descricao": (
+            "Cantor, compositor e ministro brasileiro de música cristã contemporânea. "
+            "Iniciou sua carreira fonográfica em 2001 e ganhou grande projeção com "
+            "projetos como Faz Chover e Uma Nova História, mantendo uma identidade "
+            "marcada por rock, louvor e adoração."
+        ),
+        "integrantes": ["Fernandinho"],
+        "genero": ["rock", "worship", "metal", "gospel"],
+        "ano_formacao": 2001,
+        "albuns": [
+            "Sede de Justiça (Ao Vivo)",
+            "Uma Nova História (Ao Vivo)",
+            "Teus Sonhos (Ao Vivo)",
+            "Único (Ao Vivo)",
+            "Galileu (Ao Vivo)",
+        ],
+        "foto": "arquivos/Artistas/fernandinho.jpg",
+        "foto_de_perfil": "arquivos/logos/fernandinho_foto_de_perfil.jpg",
+    },
+
+    "Discopraise": {
+        "nome": "Discopraise",
+        "descricao": (
+            "Banda brasileira de música cristã que começou em 1998 com o nome Azziz. "
+            "Depois adotou o nome Discopraise e construiu sua identidade misturando "
+            "influências de disco music, rock, pop e louvor, com forte presença de groove."
+        ),
+        "integrantes": ["Jota Albuquerque", "Clayton O'lee", "Cláudio Gomez"],
+        "genero": ["rock", "worship", "groove"],
+        "ano_formacao": 1998,
+        "albuns": [
+            "Som, Palavra e Poder (Ao Vivo)",
+            "WorChip do Robô (Ao Vivo)",
+        ],
+        "foto": "arquivos/Artistas/discopraise.jpg",
+        "foto_de_perfil": "arquivos/logos/discopraise_foto_de_perfil.jpg",
+    },
+
+    "Nívea Soares": {
+        "nome": "Nívea Soares",
+        "descricao": (
+            "Cantora e compositora brasileira de música cristã contemporânea. "
+            "Após sua participação no Diante do Trono, iniciou a carreira solo em 2003 "
+            "e se tornou uma das vozes conhecidas do cenário de louvor e adoração brasileiro."
+        ),
+        "integrantes": ["Nívea Soares"],
+        "genero": ["rock"],
+        "ano_formacao": 2003,
+        "albuns": ["Glória e Honra (Ao Vivo)"],
+        "foto": "arquivos/Artistas/nivea_soares.jpg",
+        "foto_de_perfil": "arquivos/logos/nivea_soares_foto_de_perfil.jpg",
+    },
+
+    "fhop music": {
+        "nome": "fhop music",
+        "descricao": (
+            "Projeto musical ligado à Florianópolis House of Prayer. A FHOP, fundada em 2014, "
+            "desenvolve um ambiente de oração, adoração e composição, e a fhop music registra "
+            "canções e projetos nascidos desse contexto, com forte identidade de worship."
+        ),
+        "integrantes": ["Equipe de músicos e ministros da FHOP Music"],
+        "genero": ["worship", "rock"],
+        "ano_formacao": 2014,
+        "albuns": [
+            "Colossenses e suas linhas de amor",
+            "Meia Noite",
+        ],
+        "foto": "arquivos/Artistas/fhop_music.jpg",
+        "foto_de_perfil": "arquivos/logos/fhop_music_foto_de_perfil.png",
+    },
+
+    "Thalles Roberto": {
+        "nome": "Thalles Roberto",
+        "descricao": (
+            "Cantor, compositor e multi-instrumentista brasileiro. Antes da carreira cristã "
+            "em destaque, atuou como músico de apoio de outros artistas e, em 2009, lançou "
+            "Na Sala do Pai, projeto que o levou a grande projeção nacional. Sua sonoridade "
+            "transita entre groove, rock e música cristã contemporânea."
+        ),
+        "integrantes": ["Thalles Roberto"],
+        "genero": ["groove", "worship", "rock"],
+        "ano_formacao": 2009,
+        "albuns": [
+            "Essência",
+            "Na Sala do Pai",
+            "Sejam Cheios do Espírito Santo",
+            "Thalles Ao Vivo",
+        ],
+        "foto": "arquivos/Artistas/thalles_roberto.jpg",
+        "foto_de_perfil": "arquivos/logos/thalles_roberto_foto_de_perfil.jpg",
+    },
+
+    "Salzband": {
+        "nome": "Salzband",
+        "descricao": (
+            "Grupo brasileiro de música cristã com catálogo que atravessa diferentes fases "
+            "e combina elementos de rock e louvor. O projeto já aparece no catálogo digital "
+            "desde o álbum Salz, de 1998, e conta com A Esperança se Renova entre seus trabalhos."
+        ),
+        "integrantes": ["Salzband"],
+        "genero": ["rock", "worship"],
+        "ano_formacao": 1998,
+        "albuns": ["A Esperança se Renova"],
+        "foto": "arquivos/Artistas/salzband.jpg",
+        "foto_de_perfil": "arquivos/logos/salzband_foto_de_perfil.jpg",
+    },
+
+    "Oficina G3": {
+        "nome": "Oficina G3",
+        "descricao": (
+            "Banda brasileira de rock cristão criada em São Paulo em 1987. Ao longo da "
+            "carreira, passou por diferentes formações e explorou hard rock, metal, rock "
+            "progressivo e trabalhos acústicos, tornando-se uma das bandas mais importantes "
+            "do rock cristão brasileiro."
+        ),
+        "integrantes": [
+            "Juninho Afram",
+            "Duca Tambasco",
+            "Jean Carllos",
+            "Lufe",
+            "Walter Lopes",
+            "Luciano Manga",
+            "Pedro Geraldo Mazarão (PG)",
+            "Mauro Henrique",
+            "Alexandre Aposan",
+        ],
+        "genero": ["rock", "metal", "acústico"],
+        "ano_formacao": 1987,
+        "albuns": [
+            "Histórias e Bicicletas (Reflexões, Encontros e Esperança)",
+            "Depois da Guerra",
+            "Humanos",
+            "O Tempo",
+            "Indiferença",
+            "Nada É Tão Novo, Nada É Tão Velho",
+            "Eletrakustika",
+            "Acústico",
+            "João",
+        ],
+        "foto": "arquivos/Artistas/oficinag3.png",
+        "foto_de_perfil": "arquivos/logos/oficinag3_foto_de_perfil.jpg",
+    },
+
+    "PG": {
+        "nome": "PG",
+        "descricao": (
+            "Pedro Geraldo Mazarão, conhecido como PG, é cantor, compositor e multi-instrumentista. "
+            "Depois de sua passagem pelo Oficina G3, deixou a banda em 2003 e iniciou a carreira "
+            "solo, lançando Adoração em 2004 e consolidando sua identidade no rock cristão."
+        ),
+        "integrantes": ["PG"],
+        "genero": ["rock"],
+        "ano_formacao": 2004,
+        "albuns": [
+            "Eu Sou Livre",
+            "Bem Aventurado",
+        ],
+        "foto": "arquivos/Artistas/pg.jpg",
+        "foto_de_perfil": "arquivos/logos/pg_foto_de_perfil.jpg",
+    },
+
+    "David Quinlan": {
+        "nome": "David Quinlan",
+        "descricao": (
+            "Cantor e ministro de louvor conhecido por seu trabalho com o ministério "
+            "Paixão, Fogo e Glória. Sua discografia ganhou destaque no cenário brasileiro "
+            "de adoração a partir do fim dos anos 1990, com projetos como Fogo e Glória e "
+            "Águas Profundas."
+        ),
+        "integrantes": ["David Quinlan"],
+        "genero": ["rock"],
+        "ano_formacao": 1998,
+        "albuns": ["Águas Profundas - Ao Vivo"],
+        "foto": "arquivos/Artistas/david_quinlan.jpg",
+        "foto_de_perfil": "arquivos/logos/david_quinlan_foto_de_perfil.jpg",
+    },
+
+    "Eli Soares": {
+        "nome": "Eli Soares",
+        "descricao": (
+            "Cantor brasileiro de música cristã. Natural de Belo Horizonte, começou na música "
+            "ainda criança e ganhou espaço nacional a partir de 2009. Seu trabalho dialoga com "
+            "rock, groove, soul e outras influências da música contemporânea."
+        ),
+        "integrantes": ["Eli Soares"],
+        "genero": ["rock", "groove"],
+        "ano_formacao": 2009,
+        "albuns": ["Memórias 3"],
+        "foto": "arquivos/Artistas/eli_soares.jpg",
+        "foto_de_perfil": "arquivos/logos/eli_soares_foto_de_perfil_converted.jpg",
+    },
+
+    "Resgate": {
+        "nome": "Resgate",
+        "descricao": (
+            "Banda paulista de rock cristão formada em 1989. O grupo se tornou um dos nomes "
+            "mais importantes do rock cristão brasileiro, explorando hard rock, pop rock e "
+            "outras vertentes ao longo de sua trajetória."
+        ),
+        "integrantes": ["Zé Bruno", "Hamilton Gomes", "Marcelo Bassa", "Jorge Bruno"],
+        "genero": ["rock"],
+        "ano_formacao": 1989,
+        "albuns": ["On The Rock"],
+        "foto": "arquivos/Artistas/resgate.jpg",
+        "foto_de_perfil": "arquivos/logos/resgate_foto_de_perfil.jpg",
+    },
+
+    "Juninho Afram": {
+        "nome": "Juninho Afram",
+        "descricao": (
+            "Guitarrista, vocalista, compositor e um dos fundadores do Oficina G3. É o único "
+            "integrante da formação inicial que permaneceu no grupo de forma contínua e também "
+            "possui trabalhos em carreira solo, incluindo o single Ousado Amor, de 2018."
+        ),
+        "integrantes": ["Juninho Afram"],
+        "genero": ["rock"],
+        "ano_formacao": 2018,
+        "albuns": ["Ousado Amor - Single"],
+        "foto": "arquivos/Artistas/juninho_afram_converted.jpg",
+        "foto_de_perfil": "arquivos/logos/juninho_afram_foto_de_perfil_converted.jpg",
+    },
+}
+
+# Compatibilidade com o nome usado no primeiro rascunho do projeto.
+informacoes_artistas = artistas
+
+
+def obter_artista(nome):
+    """Retorna os dados do artista ou um perfil vazio seguro para a interface."""
+    return artistas.get(nome, {
+        "nome": nome or "Artista desconhecido",
+        "descricao": "Não há informações cadastradas para este artista.",
+        "integrantes": [],
+        "genero": [],
+        "ano_formacao": 0,
+        "albuns": [],
+        "foto": "",
+        "foto_de_perfil": "",
+    })
+

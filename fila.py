@@ -75,10 +75,30 @@ def musica_atual(fila):
     return None
 
 
-def proxima(fila):
-    """Avança uma posição. Devolve a nova música, ou None se a fila acabou."""
-    if fila["posicao"] + 1 >= len(fila["itens"]):
+def proxima(fila, ordem_original=None):
+    """
+    Avança para a próxima música.
+
+    Quando chega ao fim, a fila NÃO para: ela é reconstruída e começa outra vez.
+    No modo normal volta para a ordem original; no aleatório cria um novo
+    embaralhamento e evita repetir imediatamente a música que acabou de tocar.
+
+    "ordem_original" deve ser a lista original da playlist.
+    """
+    itens = fila.get("itens", [])
+    if not itens:
         return None
+
+    if fila.get("posicao", 0) + 1 >= len(itens):
+        atual = musica_atual(fila)
+        evitar_id = atual.get("id") if atual else None
+        return reiniciar(
+            fila,
+            ordem_original or itens,
+            aleatorio=fila.get("aleatorio", False),
+            evitar_id=evitar_id,
+        )
+
     fila["posicao"] += 1
     return musica_atual(fila)
 
@@ -97,7 +117,11 @@ def proximas(fila):
 
 def tocar_em_seguida(fila, musica):
     """'Tocar a seguir': encaixa a música logo depois da atual."""
-    fila["itens"].insert(fila["posicao"] + 1, musica)
+    if not musica or not fila.get("itens"):
+        return False
+    posicao = min(max(fila.get("posicao", 0) + 1, 0), len(fila["itens"]))
+    fila["itens"].insert(posicao, musica)
+    return True
 
 
 def _achar_posicao(fila, musica_id):
@@ -114,18 +138,27 @@ def mover(fila, de, para):
     Depois, recalcula 'posicao' para continuar apontando para a música
     que está tocando - senão a fila "pularia" sozinha.
     """
+    itens = fila.get("itens", [])
+    if not (0 <= de < len(itens)):
+        return False
+    para = min(max(para, 0), len(itens) - 1)
+
     atual = musica_atual(fila)
-    item = fila["itens"].pop(de)
-    fila["itens"].insert(para, item)
+    item = itens.pop(de)
+    itens.insert(para, item)
     if atual is not None:
         fila["posicao"] = _achar_posicao(fila, atual["id"])
+    return True
 
 
 def remover(fila, indice):
     """Tira uma música da fila. Não deixa remover a que está tocando."""
+    itens = fila.get("itens", [])
+    if not (0 <= indice < len(itens)):
+        return False
     if indice == fila["posicao"]:
         return False
-    fila["itens"].pop(indice)
+    itens.pop(indice)
     if indice < fila["posicao"]:  # removeu algo ANTES da atual: tudo andou 1 casa
         fila["posicao"] -= 1
     return True
