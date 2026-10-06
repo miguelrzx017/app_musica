@@ -141,8 +141,12 @@ def montar_perfil(artista, achar):
             rotulo = "Artista" if solo else "Integrantes"
             integrantes = [(rotulo, ", ".join(nomes))]
 
-    # Discografia: db.listar_albuns já vem do mais antigo para o mais novo
-    capas = [achar(album.get("capa")) for album in db.listar_albuns(artista["id"])]
+    # Discografia: db.listar_albuns já vem do mais antigo para o mais novo.
+    # Cada item leva o id (para abrir o álbum ao tocar na capa).
+    albuns = [
+        {"id": album["id"], "nome": album["nome"], "capa": achar(album.get("capa"))}
+        for album in db.listar_albuns(artista["id"])
+    ]
 
     return {
         "nome": nome_na_tela(artista["nome"]),
@@ -150,5 +154,5 @@ def montar_perfil(artista, achar):
         "foto": achar(info.get("foto")),
         "biografia": paragrafos,
         "integrantes": integrantes,
-        "capas": capas,
+        "albuns": albuns,
     }

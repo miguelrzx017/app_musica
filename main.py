@@ -106,7 +106,8 @@ from kivy.utils import platform
 import db
 import fila
 from audio import criar_motor
-from db import _sem_acento, listar_playlists, musicas_da_playlist, registrar_reproducao
+from db import (_sem_acento, listar_albuns, listar_musicas, listar_playlists,
+                musicas_da_playlist, registrar_reproducao)
 from biblioteca import musicas as BIBLIOTECA_MUSICAS
 from biblioteca import obter_artista
 from perfis_artistas import artistas_ordenados, logo_do_artista, montar_perfil, nome_na_tela
@@ -445,8 +446,23 @@ class LinhaArtista(ButtonBehavior, BoxLayout):
         App.get_running_app().abrir_artista(int(self.artista_id))
 
 
-class CapaAlbum(ImagemArredondada):
-    """Capa quadrada da discografia (o tamanho está no .kv)."""
+class CapaAlbum(ButtonBehavior, ImagemArredondada):
+    """Capa quadrada da discografia (o tamanho está no .kv). Tocar abre o álbum."""
+    album_id = NumericProperty(0)
+
+    def on_release(self):
+        App.get_running_app().abrir_album(int(self.album_id))
+
+
+class LinhaMusicaAlbum(ButtonBehavior, BoxLayout):
+    """Uma música na página do álbum (título + artista)."""
+    titulo = StringProperty("")
+    artista = StringProperty("")
+    indice = NumericProperty(0)       # posição no álbum (0 = primeira)
+    id_musica = NumericProperty(-1)   # para destacar a que está tocando
+
+    def on_release(self):
+        App.get_running_app().root.get_screen("album").tocar_a_partir_de(int(self.indice))
 
 
 class ParagrafoBio(Label):
@@ -520,7 +536,7 @@ class TelaArtista(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._artista = None
-        self._capas = []
+        self._albuns = []
 
     def carregar(self, artista):
         """Preenche a página com os dados de 'artista' (linha de db.listar_artistas)."""
@@ -540,9 +556,9 @@ class TelaArtista(Screen):
         for funcao, nomes in perfil["integrantes"]:
             integrantes.add_widget(LinhaInfo(text=f"{funcao}: {nomes}"))
 
-        self._capas = perfil["capas"]
-        self.tem_albuns = bool(self._capas)
-        self.tem_mais = len(self._capas) > self.ALBUNS_RESUMO
+        self._albuns = perfil["albuns"]
+        self.tem_albuns = bool(self._albuns)
+        self.tem_mais = len(self._albuns) > self.ALBUNS_RESUMO
         self.expandido = False
         self._mostrar_capas()
         self.ids.rolagem.scroll_y = 1   # sempre abre no topo
@@ -555,13 +571,60 @@ class TelaArtista(Screen):
     def _mostrar_capas(self):
         grade = self.ids.grade_albuns
         grade.clear_widgets()
-        visiveis = self._capas if self.expandido else self._capas[:self.ALBUNS_RESUMO]
-        for capa in visiveis:
-            grade.add_widget(CapaAlbum(source=capa))
+        visiveis = self._albuns if self.expandido else self._albuns[:self.ALBUNS_RESUMO]
+        for album in visiveis:
+            grade.add_widget(CapaAlbum(source=album["capa"], album_id=album["id"]))
 
     def alternar_discografia(self):
         self.expandido = not self.expandido
         self._mostrar_capas()
+
+
+class TelaAlbum(Screen):
+    """Página de UM álbum: capa, título, artista, ano e as músicas que existem no app."""
+    nome = StringProperty("")
+    artista = StringProperty("")
+    logo = StringProperty("")
+    capa = StringProperty("")
+    lancamento = StringProperty("")
+    sem_musicas = BooleanProperty(False)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._album_id = None
+        self.musicas = []
+
+    def carregar(self, album_id):
+        """Preenche a página. Devolve False se o álbum não existe mais no banco."""
+        album = next((a for a in listar_albuns() if a["id"] == album_id), None)
+        if album is None:
+            return False
+        self._album_id = album_id
+        self.nome = album["nome"]
+        self.artista = nome_na_tela(album["artista"])
+        self.logo = logo_do_artista({"nome": album["artista"]}, _achar)
+        self.capa = _achar(album.get("capa"))
+        self.lancamento = f"Lançado em {album['ano']}" if album.get("ano") else ""
+
+        # só as músicas que estão no app (na ordem em que foram cadastradas)
+        self.musicas = listar_musicas(album_id=album_id)
+        self.sem_musicas = not self.musicas
+        caixa = self.ids.caixa_musicas
+        caixa.clear_widgets()
+        for i, m in enumerate(self.musicas):
+            caixa.add_widget(LinhaMusicaAlbum(
+                titulo=m["titulo"], artista=m["artista"], indice=i, id_musica=m["id"]))
+        self.ids.rolagem.scroll_y = 1   # sempre abre no topo
+        return True
+
+    def recarregar(self):
+        """Refaz a página aberta (usado quando o Android libera a leitura das imagens)."""
+        if self._album_id is not None:
+            self.carregar(self._album_id)
+
+    def tocar_a_partir_de(self, indice):
+        App.get_running_app().iniciar_fila(
+            self.musicas, comecar_em=indice, origem=self.nome)
 
 
 class TelaPlaylist(Screen):
@@ -694,7 +757,8 @@ class MainApp(App):
         gerenciador = ScreenManager(transition=SlideTransition(duration=0.2))
         for classe, nome in ((TelaMenu, "menu"), (TelaPlaylist, "playlist"),
                              (TelaPlayer, "player"), (TelaFila, "fila"),
-                             (TelaArtistas, "artistas"), (TelaArtista, "artista")):
+                             (TelaArtistas, "artistas"), (TelaArtista, "artista"),
+                             (TelaAlbum, "album")):
             gerenciador.add_widget(classe(name=nome))
         Window.bind(on_keyboard=self._tecla)
         # O Android avisa quando está ficando sem memória (logo antes de matar apps).
@@ -711,6 +775,7 @@ class MainApp(App):
             return  # ainda não terminou de abrir; o on_start monta tudo
         self.root.get_screen("artistas").montar()
         self.root.get_screen("artista").recarregar()
+        self.root.get_screen("album").recarregar()
         self.root.get_screen("menu").montar(self.playlists)
         tela = self.root.get_screen("playlist")
         if tela.nome_playlist:
@@ -768,6 +833,11 @@ class MainApp(App):
                 self.root.get_screen("artista").carregar(artista)
                 self.ir("artista")
                 return
+
+    def abrir_album(self, album_id):
+        """Abre a página do álbum tocado na discografia do artista."""
+        if self.root.get_screen("album").carregar(album_id):
+            self.ir("album")
 
     def abrir_artista_atual(self):
         """Toque no cartão 'Sobre o Artista' do player: abre a página do artista que está tocando."""

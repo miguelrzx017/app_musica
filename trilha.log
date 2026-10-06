@@ -1,19 +1,13 @@
 [    0.00s |    0 MB] app iniciando
-[    8.93s |    0 MB] _tocar #1: 'A Alegria do Senhor' (iniciar=True)
-[    9.01s |    0 MB]   motor.carregar(...) começando [MotorPygame]
-[    9.40s |    0 MB]   motor.carregar OK; chamando motor.tocar()
-[    9.41s |    0 MB]   motor.tocar OK (tocando)
-[   18.54s |    0 MB] pular(automatico=False) posicao=0/65
-[   18.55s |    0 MB] _tocar #2: 'Acusador' (iniciar=True)
-[   18.63s |    0 MB]   motor.carregar(...) começando [MotorPygame]
-[   18.64s |    0 MB]   motor.carregar OK; chamando motor.tocar()
-[   18.65s |    0 MB]   motor.tocar OK (tocando)
-[   24.49s |    0 MB] _tocar #3: 'Acusador' (iniciar=True)
-[   24.54s |    0 MB]   motor.carregar(...) começando [MotorPygame]
-[   24.55s |    0 MB]   motor.carregar OK; chamando motor.tocar()
-[   24.55s |    0 MB]   motor.tocar OK (tocando)
-[   25.09s |    0 MB] _tocar #4: 'A Alegria do Senhor' (iniciar=True)
-[   25.15s |    0 MB]   motor.carregar(...) começando [MotorPygame]
-[   25.15s |    0 MB]   motor.carregar OK; chamando motor.tocar()
-[   25.15s |    0 MB]   motor.tocar OK (tocando)
-[   61.14s |    0 MB] on_stop (app encerrando normalmente)
+[   60.19s |    0 MB] _tocar #1: 'Razão' (iniciar=True)
+[   60.24s |    0 MB]   motor.carregar(...) começando [MotorPygame]
+[   60.30s |    0 MB]   motor.carregar OK; chamando motor.tocar()
+[   60.31s |    0 MB]   motor.tocar OK (tocando)
+[  309.73s |    0 MB] _terminou: faixa acabou sozinha: 'Razão'
+[  309.74s |    0 MB]   motor.parar OK; gravando histórico
+[  309.75s |    0 MB]   histórico OK; agendando a próxima
+[  309.76s |    0 MB] pular(automatico=True) posicao=2/3
+[  309.76s |    0 MB] _tocar #2: 'Naves Imperiais' (iniciar=True)
+[  309.80s |    0 MB]   motor.carregar(...) começando [MotorPygame]
+[  309.82s |    0 MB]   motor.carregar OK; chamando motor.tocar()
+[  309.82s |    0 MB]   motor.tocar OK (tocando)

@@ -971,6 +971,7 @@
     size_hint_y: None
     height: self.width
     raio: dp(10)
+    opacity: .7 if self.state == "down" else 1
 
 # Bolinha branca com seta (para a direita; para cima quando a lista está aberta)
 <SetaCirculo>:
@@ -991,7 +992,6 @@
             joint: "round"
 
 <TelaArtista>:
-    on_pre_enter: rolagem.scroll_y = 1
     BoxLayout:
         orientation: "vertical"
         ScrollView:
@@ -1113,4 +1113,121 @@
                         size_hint_y: None
                         height: self.minimum_height
                         spacing: dp(8)
+        MiniPlayer:
+
+
+# ======================================================================
+# TELA: ALBUM - capa, título, artista, ano e as músicas que estão no app
+# ======================================================================
+# Linha de música do álbum:  Título / Artista  (a que está tocando fica vermelha)
+<LinhaMusicaAlbum>:
+    size_hint_y: None
+    height: dp(66)
+    padding: dp(8), dp(4)
+    canvas.before:
+        Color:
+            rgba: (1, 1, 1, .08) if self.state == "down" else (0, 0, 0, 0)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(12)]
+    BoxLayout:
+        orientation: "vertical"
+        Texto:
+            text: root.titulo
+            font_size: "20sp"
+            valign: "bottom"
+            color: COR_DESTAQUE if root.id_musica == app.id_atual else (1, 1, 1, 1)
+        Texto:
+            text: root.artista
+            font_size: "15sp"
+            valign: "top"
+            color: COR_CINZA
+
+<TelaAlbum>:
+    BoxLayout:
+        orientation: "vertical"
+        ScrollView:
+            id: rolagem
+            do_scroll_x: False
+            bar_width: 0
+            BoxLayout:
+                orientation: "vertical"
+                size_hint_y: None
+                height: self.minimum_height
+                padding: dp(16), dp(14), dp(16), dp(24)
+                spacing: dp(8)
+
+                BotaoVoltar:
+                    on_release: app.voltar_tela()
+
+                # Capa grande e quadrada, centralizada (~70% da largura)
+                BoxLayout:
+                    size_hint_y: None
+                    height: self.width * 0.69
+                    padding: self.width * 0.155, 0
+                    ImagemArredondada:
+                        raio: dp(30)
+                        source: root.capa
+
+                # Título (quebra em mais linhas se o nome for grande)
+                Label:
+                    text: root.nome
+                    bold: True
+                    font_size: "28sp"
+                    size_hint_y: None
+                    text_size: self.width, None
+                    height: self.texture_size[1] + dp(8)
+                    halign: "left"
+                    valign: "middle"
+
+                # Fotinho redonda + nome do artista
+                BoxLayout:
+                    size_hint_y: None
+                    height: dp(40)
+                    spacing: dp(8)
+                    ImagemArredondada:
+                        size_hint: None, None
+                        size: dp(36), dp(36)
+                        pos_hint: {"center_y": .5}
+                        raio: dp(18)
+                        source: root.logo
+                    Texto:
+                        text: root.artista
+                        font_size: "24sp"
+                        color: COR_CINZA
+
+                Label:
+                    text: root.lancamento
+                    font_size: "14sp"
+                    color: COR_CINZA
+                    size_hint_y: None
+                    height: dp(26) if root.lancamento else 0
+                    text_size: self.width, None
+                    halign: "left"
+                    valign: "middle"
+                    padding_x: dp(10)
+
+                Widget:
+                    size_hint_y: None
+                    height: dp(14)
+
+                # as músicas são criadas pelo main.py (TelaAlbum.carregar)
+                BoxLayout:
+                    id: caixa_musicas
+                    orientation: "vertical"
+                    size_hint_y: None
+                    height: self.minimum_height
+                    spacing: dp(6)
+
+                Label:
+                    text: "Nenhuma música deste álbum está no app."
+                    font_size: "15sp"
+                    color: COR_CINZA
+                    size_hint_y: None
+                    height: dp(60) if root.sem_musicas else 0
+                    opacity: 1 if root.sem_musicas else 0
+                    text_size: self.width, None
+                    halign: "center"
+                    valign: "middle"
         MiniPlayer:
