@@ -1,0 +1,4 @@
+<service
+    android:name="org.miguelribeiro.mymusicgospel.PlaybackForegroundService"
+    android:exported="false"
+    android:foregroundServiceType="mediaPlayback" />

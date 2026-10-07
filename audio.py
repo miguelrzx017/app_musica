@@ -232,6 +232,11 @@ class MotorAndroid:
         from jnius import autoclass  # só existe no Android
 
         self._MediaPlayer = autoclass("android.media.MediaPlayer")
+        try:
+            activity = autoclass("org.kivy.android.PythonActivity").mActivity
+            self._wake_context = activity.getApplicationContext()
+        except Exception:
+            self._wake_context = None
         self.mp = None
         self._tocando = False  # "queremos que esteja tocando" (False = pausado)
         self._started_at = 0.0  # evita detectar falso "fim" logo depois do start()
@@ -240,6 +245,9 @@ class MotorAndroid:
         self.parar()
         mp = self._MediaPlayer()
         try:
+            if self._wake_context is not None:
+                # Mantém a CPU acordada enquanto o áudio toca com a tela apagada.
+                mp.setWakeMode(self._wake_context, 1)  # PARTIAL_WAKE_LOCK
             mp.setDataSource(str(caminho))
             mp.prepare()  # arquivo local
         except Exception as erro:

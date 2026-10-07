@@ -1,13 +1,9 @@
 [    0.00s |    0 MB] app iniciando
-[   60.19s |    0 MB] _tocar #1: 'Razão' (iniciar=True)
-[   60.24s |    0 MB]   motor.carregar(...) começando [MotorPygame]
-[   60.30s |    0 MB]   motor.carregar OK; chamando motor.tocar()
-[   60.31s |    0 MB]   motor.tocar OK (tocando)
-[  309.73s |    0 MB] _terminou: faixa acabou sozinha: 'Razão'
-[  309.74s |    0 MB]   motor.parar OK; gravando histórico
-[  309.75s |    0 MB]   histórico OK; agendando a próxima
-[  309.76s |    0 MB] pular(automatico=True) posicao=2/3
-[  309.76s |    0 MB] _tocar #2: 'Naves Imperiais' (iniciar=True)
-[  309.80s |    0 MB]   motor.carregar(...) começando [MotorPygame]
-[  309.82s |    0 MB]   motor.carregar OK; chamando motor.tocar()
-[  309.82s |    0 MB]   motor.tocar OK (tocando)
+[   54.26s |    0 MB] _tocar #1: 'A Alegria do Senhor' (iniciar=True)
+[   54.34s |    0 MB]   motor.carregar(...) começando [MotorPygame]
+[   54.44s |    0 MB]   motor.carregar OK; chamando motor.tocar()
+[   54.44s |    0 MB]   motor.tocar OK (tocando)
+[   74.78s |    0 MB] _tocar #2: 'Além do que os Olhos Podem Ver' (iniciar=True)
+[   74.91s |    0 MB]   motor.carregar(...) começando [MotorPygame]
+[   74.92s |    0 MB]   motor.carregar OK; chamando motor.tocar()
+[   74.92s |    0 MB]   motor.tocar OK (tocando)

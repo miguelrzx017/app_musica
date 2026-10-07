@@ -30,6 +30,144 @@
     size_hint: None, None
     size: dp(44), dp(44)
 
+<IconePerfil@ButtonBehavior+Widget>:
+    size_hint: None, None
+    size: dp(46), dp(46)
+    canvas:
+        Color:
+            rgba: COR_CINZA
+        Ellipse:
+            pos: self.x + dp(2), self.y + dp(2)
+            size: dp(42), dp(42)
+        Color:
+            rgba: COR_CARTAO
+        Ellipse:
+            pos: self.center_x - dp(7), self.center_y + dp(2)
+            size: dp(14), dp(14)
+        Ellipse:
+            pos: self.center_x - dp(14), self.y + dp(5)
+            size: dp(28), dp(20)
+
+<FormaDeOnda@Widget>:
+    size_hint_y: None
+    height: dp(76)
+    canvas:
+        Color:
+            rgba: 1, 1, 1, 1
+        RoundedRectangle:
+            pos: self.center_x - dp(47), self.center_y - dp(18)
+            size: dp(7), dp(36)
+            radius: [dp(4)]
+        RoundedRectangle:
+            pos: self.center_x - dp(33), self.center_y - dp(29)
+            size: dp(7), dp(58)
+            radius: [dp(4)]
+        RoundedRectangle:
+            pos: self.center_x - dp(19), self.center_y - dp(38)
+            size: dp(7), dp(76)
+            radius: [dp(4)]
+        RoundedRectangle:
+            pos: self.center_x - dp(5), self.center_y - dp(25)
+            size: dp(7), dp(50)
+            radius: [dp(4)]
+        RoundedRectangle:
+            pos: self.center_x + dp(9), self.center_y - dp(17)
+            size: dp(7), dp(34)
+            radius: [dp(4)]
+        RoundedRectangle:
+            pos: self.center_x + dp(23), self.center_y - dp(29)
+            size: dp(7), dp(58)
+            radius: [dp(4)]
+        RoundedRectangle:
+            pos: self.center_x + dp(37), self.center_y - dp(38)
+            size: dp(7), dp(76)
+            radius: [dp(4)]
+        RoundedRectangle:
+            pos: self.center_x + dp(51), self.center_y - dp(18)
+            size: dp(7), dp(36)
+            radius: [dp(4)]
+
+<LinhaEstatistica>:
+    size_hint_y: None
+    height: dp(78)
+    padding: dp(8), dp(7)
+    spacing: dp(12)
+    canvas.before:
+        Color:
+            rgba: COR_CARTAO
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(14)]
+    Label:
+        text: str(root.numero)
+        size_hint_x: None
+        width: dp(24)
+        color: COR_CINZA
+        font_size: "16sp"
+    ImagemArredondada:
+        size_hint: None, None
+        size: dp(58), dp(58)
+        pos_hint: {"center_y": .5}
+        raio: dp(9)
+        source: root.capa
+    BoxLayout:
+        orientation: "vertical"
+        spacing: dp(2)
+        Label:
+            text: root.titulo
+            font_name: "DMSansMedium"
+            font_size: "15sp"
+            halign: "left"
+            valign: "bottom"
+            text_size: self.size
+            shorten: True
+        Label:
+            text: root.detalhe
+            color: COR_CINZA
+            font_size: "12sp"
+            halign: "left"
+            valign: "top"
+            text_size: self.size
+            shorten: True
+    Label:
+        text: root.valor
+        size_hint_x: None
+        width: dp(82)
+        color: COR_CINZA
+        font_size: "12sp"
+        halign: "right"
+        valign: "middle"
+        text_size: self.size
+
+<CartaoResumo>:
+    orientation: "vertical"
+    size_hint_y: None
+    height: dp(80)
+    padding: dp(16), dp(9)
+    spacing: dp(2)
+    canvas.before:
+        Color:
+            rgba: COR_CARTAO
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(14)]
+    Label:
+        text: root.rotulo
+        color: COR_CINZA
+        font_size: "13sp"
+        halign: "left"
+        valign: "bottom"
+        text_size: self.size
+    Label:
+        text: root.valor
+        font_name: "DMSansMedium"
+        font_size: "21sp"
+        halign: "left"
+        valign: "top"
+        text_size: self.size
+
 # Texto de uma linha, alinhado à esquerda, com "..." se não couber.
 <Texto@Label>:
     halign: "left"
@@ -274,6 +412,313 @@
             color: COR_CINZA
 
 # ======================================================================
+# TELA DE CADASTRO E LOGIN
+# ======================================================================
+<PerfilModal>:
+    size_hint: .82, None
+    height: dp(210)
+    auto_dismiss: True
+    background: ""
+    background_color: 0, 0, 0, 0
+    BoxLayout:
+        orientation: "vertical"
+        padding: dp(20)
+        spacing: dp(12)
+        canvas.before:
+            Color:
+                rgba: (.12, .12, .12, 1)
+            RoundedRectangle:
+                pos: self.pos
+                size: self.size
+                radius: [dp(22)]
+        Label:
+            text: app.usuario_atual
+            font_name: "DMSansMedium"
+            font_size: "20sp"
+        Button:
+            text: "Sair da conta"
+            size_hint_y: None
+            height: dp(48)
+            background_normal: ""
+            background_color: (.28, .28, .28, 1)
+            on_release:
+                app.sair_da_conta()
+                root.dismiss()
+        Button:
+            text: "Fechar"
+            size_hint_y: None
+            height: dp(42)
+            background_normal: ""
+            background_color: (0, 0, 0, 0)
+            on_release: root.dismiss()
+
+<TelaAcesso>:
+    BoxLayout:
+        orientation: "vertical"
+        ScrollView:
+            do_scroll_x: False
+            bar_width: 0
+            BoxLayout:
+                orientation: "vertical"
+                size_hint_y: None
+                height: self.minimum_height
+                padding: dp(26), dp(22), dp(26), dp(18)
+                spacing: dp(12)
+
+                Widget:
+                    size_hint_y: None
+                    height: dp(8)
+                FormaDeOnda:
+                Label:
+                    text: "My Music"
+                    bold: True
+                    font_size: "48sp"
+                    size_hint_y: None
+                    height: dp(58)
+                Label:
+                    text: "Gospel"
+                    bold: True
+                    font_size: "26sp"
+                    size_hint_y: None
+                    height: dp(34)
+
+                BoxLayout:
+                    size_hint_y: None
+                    height: dp(54)
+                    padding: dp(5)
+                    canvas.before:
+                        Color:
+                            rgba: COR_CARTAO
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [dp(24)]
+                    Button:
+                        text: "Cadastro"
+                        bold: True
+                        font_size: "17sp"
+                        background_normal: ""
+                        background_color: (.28, .28, .28, 1) if root.modo_cadastro else (0, 0, 0, 0)
+                        on_release: root.selecionar_modo(True)
+                    Button:
+                        text: "Login"
+                        bold: True
+                        font_size: "17sp"
+                        background_normal: ""
+                        background_color: (.28, .28, .28, 1) if not root.modo_cadastro else (0, 0, 0, 0)
+                        on_release: root.selecionar_modo(False)
+
+                Widget:
+                    size_hint_y: None
+                    height: dp(4)
+                Label:
+                    text: "Nome"
+                    halign: "left"
+                    text_size: self.size
+                    font_name: "DMSansMedium"
+                    font_size: "20sp"
+                    size_hint_y: None
+                    height: dp(30)
+                TextInput:
+                    id: nome
+                    hint_text: "Digite seu nome"
+                    multiline: False
+                    write_tab: False
+                    font_size: "18sp"
+                    padding: dp(16), dp(16)
+                    size_hint_y: None
+                    height: dp(60)
+                    background_normal: ""
+                    background_active: ""
+                    background_color: COR_CARTAO
+                    foreground_color: COR_BRANCO
+                    cursor_color: COR_BRANCO
+                    hint_text_color: (.4, .4, .4, 1)
+                    on_text_validate: senha.focus = True
+                Label:
+                    text: "Senha"
+                    halign: "left"
+                    text_size: self.size
+                    font_name: "DMSansMedium"
+                    font_size: "20sp"
+                    size_hint_y: None
+                    height: dp(30)
+                TextInput:
+                    id: senha
+                    hint_text: "Digite sua senha"
+                    password: True
+                    multiline: False
+                    write_tab: False
+                    font_size: "18sp"
+                    padding: dp(16), dp(16)
+                    size_hint_y: None
+                    height: dp(60)
+                    background_normal: ""
+                    background_active: ""
+                    background_color: COR_CARTAO
+                    foreground_color: COR_BRANCO
+                    cursor_color: COR_BRANCO
+                    hint_text_color: (.4, .4, .4, 1)
+                    on_text_validate: app.cadastrar_usuario() if root.modo_cadastro else app.entrar_usuario()
+
+                Label:
+                    text: root.mensagem
+                    color: (.95, .45, .45, 1) if "incorretos" in root.mensagem or "cadastrado" in root.mensagem or "precisa" in root.mensagem or "Informe" in root.mensagem else COR_CINZA
+                    halign: "center"
+                    text_size: self.size
+                    font_size: "13sp"
+                    size_hint_y: None
+                    height: dp(34)
+                Button:
+                    text: "Criar conta" if root.modo_cadastro else "Entrar"
+                    bold: True
+                    font_size: "18sp"
+                    size_hint_y: None
+                    height: dp(54)
+                    background_normal: ""
+                    background_color: (.28, .28, .28, 1)
+                    on_release: app.cadastrar_usuario() if root.modo_cadastro else app.entrar_usuario()
+
+                Widget:
+                    size_hint_y: None
+                    height: dp(30)
+                Label:
+                    text: "Feito por: Miguel Ribeiro"
+                    color: COR_CINZA
+                    font_size: "14sp"
+                    size_hint_y: None
+                    height: dp(26)
+                Label:
+                    text: "Este aplicativo possui apenas as músicas que o criador disponibiliza"
+                    color: COR_CINZA
+                    font_size: "13sp"
+                    halign: "center"
+                    text_size: self.width, None
+                    size_hint_y: None
+                    height: self.texture_size[1] + dp(8)
+
+<TelaEstatisticas>:
+    on_pre_enter: root.atualizar()
+    BoxLayout:
+        orientation: "vertical"
+        padding: dp(16), dp(8), dp(16), dp(8)
+        spacing: dp(8)
+
+        BoxLayout:
+            size_hint_y: None
+            height: dp(58)
+            spacing: dp(8)
+            IconeChevron:
+                pos_hint: {"center_y": .5}
+                on_release: app.voltar_tela()
+            Label:
+                text: "Estatísticas"
+                bold: True
+                font_size: "30sp"
+                halign: "center"
+            Widget:
+                size_hint_x: None
+                width: dp(44)
+
+        BoxLayout:
+            size_hint_y: None
+            height: dp(50)
+            padding: dp(4)
+            canvas.before:
+                Color:
+                    rgba: COR_CARTAO
+                RoundedRectangle:
+                    pos: self.pos
+                    size: self.size
+                    radius: [dp(22)]
+            Button:
+                text: "Músicas"
+                font_size: "14sp"
+                background_normal: ""
+                background_color: (.28, .28, .28, 1) if root.aba == "musicas" else (0, 0, 0, 0)
+                on_release: root.selecionar_aba("musicas")
+            Button:
+                text: "Artistas"
+                font_size: "14sp"
+                background_normal: ""
+                background_color: (.28, .28, .28, 1) if root.aba == "artistas" else (0, 0, 0, 0)
+                on_release: root.selecionar_aba("artistas")
+            Button:
+                text: "Geral"
+                font_size: "14sp"
+                background_normal: ""
+                background_color: (.28, .28, .28, 1) if root.aba == "geral" else (0, 0, 0, 0)
+                on_release: root.selecionar_aba("geral")
+
+        BoxLayout:
+            size_hint_y: None
+            height: dp(48)
+            padding: dp(4)
+            canvas.before:
+                Color:
+                    rgba: COR_CARTAO
+                RoundedRectangle:
+                    pos: self.pos
+                    size: self.size
+                    radius: [dp(22)]
+            Button:
+                text: "Semana"
+                font_size: "13sp"
+                background_normal: ""
+                background_color: (.28, .28, .28, 1) if root.periodo == "semana" else (0, 0, 0, 0)
+                on_release: root.selecionar_periodo("semana")
+            Button:
+                text: "Mês"
+                font_size: "13sp"
+                background_normal: ""
+                background_color: (.28, .28, .28, 1) if root.periodo == "mes" else (0, 0, 0, 0)
+                on_release: root.selecionar_periodo("mes")
+            Button:
+                text: "Este ano"
+                font_size: "13sp"
+                background_normal: ""
+                background_color: (.28, .28, .28, 1) if root.periodo == "ano" else (0, 0, 0, 0)
+                on_release: root.selecionar_periodo("ano")
+
+        Label:
+            text: "Top músicas" if root.aba == "musicas" else "Artistas mais ouvidos" if root.aba == "artistas" else "Seu resumo"
+            font_name: "DMSansMedium"
+            font_size: "23sp"
+            size_hint_y: None
+            height: dp(34)
+        Label:
+            text: root._nome_periodo()
+            color: COR_CINZA
+            font_size: "13sp"
+            size_hint_y: None
+            height: dp(22)
+
+        ScrollView:
+            do_scroll_x: False
+            bar_width: dp(3)
+            BoxLayout:
+                id: lista_estatisticas
+                orientation: "vertical"
+                size_hint_y: None
+                height: self.minimum_height
+                spacing: dp(8)
+
+        Label:
+            text: root.mensagem
+            color: COR_CINZA
+            font_size: "12sp"
+            halign: "center"
+            size_hint_y: None
+            height: dp(28)
+        Button:
+            text: "Salvar captura em Downloads"
+            size_hint_y: None
+            height: dp(48)
+            background_normal: ""
+            background_color: (.28, .28, .28, 1)
+            on_release: root.gerar_captura()
+
+# ======================================================================
 # TELA 1: MENU
 # ======================================================================
 <TelaMenu>:
@@ -289,12 +734,15 @@
                 padding: dp(16), dp(20), dp(16), dp(16)
                 spacing: dp(6)
 
-                Label:
-                    text: "My Music"
-                    bold: True
-                    font_size: "50sp"
+                BoxLayout:
                     size_hint_y: None
                     height: dp(84)
+                    Label:
+                        text: "My Music"
+                        bold: True
+                        font_size: "50sp"
+                    IconePerfil:
+                        on_release: app.abrir_perfil()
 
                 Texto:
                     text: "Minhas Playlists"
@@ -365,6 +813,13 @@
                         size_hint: None, None
                         size: dp(100), dp(72)
                         pos_hint: {"center_x": .5, "center_y": .5}
+                    Button:
+                        text: ""
+                        background_normal: ""
+                        background_color: (0, 0, 0, 0)
+                        size_hint: 1, 1
+                        pos: self.parent.pos
+                        on_release: app.abrir_estatisticas()
         MiniPlayer:
 
 # ======================================================================

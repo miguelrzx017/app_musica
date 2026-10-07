@@ -1,3 +1,5 @@
 projeto.code-workspace
 __pycache__/
 *.zip
+.buildozer/
+bin/

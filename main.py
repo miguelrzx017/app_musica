@@ -17,6 +17,7 @@ No Python, qualquer tela chama App.get_running_app().pular(), etc.
 import faulthandler
 import os
 import time
+from datetime import datetime, timedelta
 
 # ----------------------------------------------------------------------
 # DIAGNÓSTICO DE QUEDAS (app que "fecha sozinho")
@@ -105,9 +106,11 @@ from kivy.utils import platform
 
 import db
 import fila
+from auth import AuthStore
 from audio import criar_motor
-from db import (_sem_acento, listar_albuns, listar_musicas, listar_playlists,
-                musicas_da_playlist, registrar_reproducao)
+from db import (_sem_acento, atualizar_reproducao, estatisticas_artistas, estatisticas_musicas,
+                listar_albuns, listar_musicas, listar_playlists,
+                musicas_da_playlist, registrar_reproducao, resumo_estatisticas)
 from biblioteca import musicas as BIBLIOTECA_MUSICAS
 from biblioteca import obter_artista
 from perfis_artistas import artistas_ordenados, logo_do_artista, montar_perfil, nome_na_tela
@@ -489,6 +492,10 @@ class OpcoesFila(ModalView):
         self.dismiss()
 
 
+class PerfilModal(ModalView):
+    """Opções da conta aberta no aparelho."""
+
+
 # ----------------------------------------------------------------------
 # TELAS
 # ----------------------------------------------------------------------
@@ -507,6 +514,234 @@ class TelaMenu(Screen):
                 subtitulo=f"Playlist - {n} {'Música' if n == 1 else 'Músicas'}",
                 capa=capa_da_playlist(p["nome"]),
             ))
+
+
+class TelaAcesso(Screen):
+    """Tela inicial de cadastro e login local."""
+    modo_cadastro = BooleanProperty(True)
+    mensagem = StringProperty("")
+
+    def selecionar_modo(self, cadastro):
+        self.modo_cadastro = bool(cadastro)
+        self.mensagem = ""
+        self.ids.nome.text = ""
+        self.ids.senha.text = ""
+
+
+class LinhaEstatistica(BoxLayout):
+    numero = NumericProperty(0)
+    titulo = StringProperty("")
+    detalhe = StringProperty("")
+    valor = StringProperty("")
+    capa = StringProperty("")
+
+
+class CartaoResumo(BoxLayout):
+    rotulo = StringProperty("")
+    valor = StringProperty("")
+
+
+class TelaEstatisticas(Screen):
+    aba = StringProperty("musicas")
+    periodo = StringProperty("semana")
+    mensagem = StringProperty("")
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._musicas = []
+        self._artistas = []
+        self._resumo = {}
+
+    def selecionar_aba(self, aba):
+        self.aba = aba
+        self.atualizar()
+
+    def selecionar_periodo(self, periodo):
+        self.periodo = periodo
+        self.atualizar()
+
+    def _periodo_desde(self):
+        agora = datetime.now()
+        if self.periodo == "semana":
+            return (agora - timedelta(days=7)).isoformat(timespec="seconds")
+        if self.periodo == "mes":
+            return (agora - timedelta(days=30)).isoformat(timespec="seconds")
+        return datetime(agora.year, 1, 1).isoformat(timespec="seconds")
+
+    def _nome_periodo(self):
+        return {
+            "semana": "Últimos 7 dias",
+            "mes": "Últimos 30 dias",
+            "ano": f"Ano de {datetime.now().year}",
+        }[self.periodo]
+
+    def atualizar(self):
+        if "lista_estatisticas" not in self.ids:
+            return
+        usuario = App.get_running_app().usuario_atual
+        desde = self._periodo_desde()
+        self._musicas = estatisticas_musicas(usuario, desde, limite=50)
+        self._artistas = estatisticas_artistas(usuario, desde, limite=50)
+        self._resumo = resumo_estatisticas(usuario, desde)
+        caixa = self.ids.lista_estatisticas
+        caixa.clear_widgets()
+        self.mensagem = ""
+
+        if self.aba == "musicas":
+            linhas = self._musicas
+            if not linhas:
+                self.mensagem = "Ainda não há reproduções neste período."
+            for posicao, item in enumerate(linhas, 1):
+                caixa.add_widget(LinhaEstatistica(
+                    numero=posicao,
+                    titulo=item["titulo"],
+                    detalhe=item["artista"],
+                    valor=f"{item['reproducoes']} {'reprodução' if item['reproducoes'] == 1 else 'reproduções'}",
+                    capa=_achar(item.get("capa")),
+                ))
+        elif self.aba == "artistas":
+            linhas = self._artistas
+            if not linhas:
+                self.mensagem = "Ainda não há reproduções neste período."
+            for posicao, item in enumerate(linhas, 1):
+                artista = {"id": item["id"], "nome": item["nome"]}
+                caixa.add_widget(LinhaEstatistica(
+                    numero=posicao,
+                    titulo=item["nome"],
+                    detalhe=f"{item['musicas_diferentes']} músicas diferentes",
+                    valor=f"{item['reproducoes']} {'reprodução' if item['reproducoes'] == 1 else 'reproduções'}",
+                    capa=logo_do_artista(artista, _achar),
+                ))
+        else:
+            resumo = self._resumo
+            segundos = int(resumo.get("segundos_ouvidos") or 0)
+            tempo = f"{segundos // 3600} h {(segundos % 3600) // 60} min"
+            metricas = (
+                ("Reproduções", str(resumo.get("reproducoes", 0))),
+                ("Músicas diferentes", str(resumo.get("musicas_diferentes", 0))),
+                ("Artistas ouvidos", str(resumo.get("artistas_diferentes", 0))),
+                ("Tempo ouvindo", tempo),
+                ("Faixas completas", str(resumo.get("completas", 0))),
+            )
+            for rotulo, valor in metricas:
+                caixa.add_widget(CartaoResumo(rotulo=rotulo, valor=valor))
+
+    def gerar_captura(self):
+        app = App.get_running_app()
+        self.atualizar()
+        quantidade = (5 if self.aba == "geral" else
+                      min(10, len(self._musicas if self.aba == "musicas" else self._artistas)))
+        relatorio = BoxLayout(
+            orientation="vertical", size_hint=(None, None),
+            size=(1080, 310 + 125 * max(1, quantidade)),
+            padding=(54, 48, 54, 48), spacing=18,
+        )
+        with relatorio.canvas.before:
+            from kivy.graphics import Color, Rectangle
+            Color(.07, .07, .07, 1)
+            Rectangle(pos=relatorio.pos, size=relatorio.size)
+
+        titulo = Label(text="My Music Gospel", font_size=52, bold=True,
+                       size_hint_y=None, height=90, halign="left")
+        titulo.text_size = (relatorio.width - 108, None)
+        relatorio.add_widget(titulo)
+        subtitulo = Label(
+            text=f"Estatísticas de {self._nome_periodo()} • "
+                 f"{'Músicas' if self.aba == 'musicas' else 'Artistas' if self.aba == 'artistas' else 'Geral'}",
+            font_size=30, color=(.7, .7, .7, 1), size_hint_y=None, height=64,
+            halign="left",
+        )
+        subtitulo.text_size = (relatorio.width - 108, None)
+        relatorio.add_widget(subtitulo)
+
+        if self.aba == "geral":
+            resumo = self._resumo
+            segundos = int(resumo.get("segundos_ouvidos") or 0)
+            linhas = [
+                f"Reproduções: {resumo.get('reproducoes', 0)}",
+                f"Músicas diferentes: {resumo.get('musicas_diferentes', 0)}",
+                f"Artistas ouvidos: {resumo.get('artistas_diferentes', 0)}",
+                f"Tempo ouvindo: {segundos // 3600} h {(segundos % 3600) // 60} min",
+                f"Faixas completas: {resumo.get('completas', 0)}",
+            ]
+        elif self.aba == "artistas":
+            linhas = [
+                f"{i}. {item['nome']} — {item['reproducoes']} reproduções, "
+                f"{item['musicas_diferentes']} músicas"
+                for i, item in enumerate(self._artistas[:10], 1)
+            ]
+        else:
+            linhas = [
+                f"{i}. {item['titulo']} — {item['artista']} — "
+                f"{item['reproducoes']} reproduções"
+                for i, item in enumerate(self._musicas[:10], 1)
+            ]
+        if not linhas:
+            linhas = ["Ainda não há reproduções neste período."]
+        for texto in linhas:
+            item_label = Label(
+                text=texto, font_size=28, color=(1, 1, 1, 1),
+                size_hint_y=None, height=110, halign="left", valign="middle",
+            )
+            item_label.text_size = (relatorio.width - 108, None)
+            relatorio.add_widget(item_label)
+
+        def salvar(_dt):
+            try:
+                relatorio.do_layout()
+                pasta_temporaria = Path(app.user_data_dir)
+                pasta_temporaria.mkdir(parents=True, exist_ok=True)
+                nome = f"estatisticas_{datetime.now():%Y%m%d_%H%M%S}.png"
+                temporario = pasta_temporaria / nome
+                relatorio.export_to_png(str(temporario))
+                destino = self._salvar_em_downloads(temporario, nome)
+                temporario.unlink(missing_ok=True)
+                self.mensagem = f"Imagem salva em: {destino}"
+            except Exception as erro:
+                trilha(f"falha ao gerar imagem das estatísticas: {erro!r}")
+                self.mensagem = "Não foi possível salvar a imagem neste aparelho."
+            finally:
+                relatorio.clear_widgets()
+
+        Clock.schedule_once(salvar, 0.15)
+
+    def _salvar_em_downloads(self, temporario, nome):
+        if platform == "android":
+            from jnius import autoclass
+            atividade = autoclass("org.kivy.android.PythonActivity").mActivity
+            resolver = atividade.getContentResolver()
+            ContentValues = autoclass("android.content.ContentValues")
+            valores = ContentValues()
+            valores.put("DISPLAY_NAME", nome)
+            valores.put("MIME_TYPE", "image/png")
+            if int(autoclass("android.os.Build$VERSION").SDK_INT) >= 29:
+                DownloadsStore = autoclass("android.provider.MediaStore$Downloads")
+                valores.put("RELATIVE_PATH", "Download/My Music Gospel")
+                uri = resolver.insert(DownloadsStore.EXTERNAL_CONTENT_URI, valores)
+                if uri is None:
+                    raise RuntimeError("O Android não criou o arquivo em Downloads.")
+                saida = resolver.openOutputStream(uri)
+                try:
+                    saida.write(temporario.read_bytes())
+                    saida.flush()
+                finally:
+                    saida.close()
+                return "Downloads/My Music Gospel/" + nome
+
+            ambiente = autoclass("android.os.Environment")
+            downloads = Path(str(ambiente.getExternalStoragePublicDirectory(
+                ambiente.DIRECTORY_DOWNLOADS).getAbsolutePath()))
+            pasta_downloads = downloads / "My Music Gospel"
+            pasta_downloads.mkdir(parents=True, exist_ok=True)
+            destino = pasta_downloads / nome
+            shutil.copyfile(temporario, destino)
+            return str(destino)
+
+        downloads = Path.home() / "Downloads" / "My Music Gospel"
+        downloads.mkdir(parents=True, exist_ok=True)
+        destino = downloads / nome
+        shutil.copyfile(temporario, destino)
+        return str(destino)
 
 
 class TelaArtistas(Screen):
@@ -732,6 +967,7 @@ class MainApp(App):
     info_artista_foto = StringProperty("")   # foto grande (arquivos/Artistas)
     info_artista_logo = StringProperty("")   # fotinho redonda (arquivos/logos)
     info_musica = StringProperty("")
+    usuario_atual = StringProperty("")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -742,20 +978,40 @@ class MainApp(App):
         self.carregado = False      # True = há uma música aberta no motor (tocando ou pausada)
         self.musica_tocando = None
         self._token = 0             # numera cada pedido de "tocar" (veja _tocar)
+        self.auth_store = None
+        self._usuario_da_faixa = ""
+        self._inicio_da_faixa = None
+        self._registro_atual = None
+        self._ultima_gravacao_segundos = 0
+        self._servico_audio_ativo = False
         self.pilha = []          # telas por onde passamos (para o botão voltar)
 
     def build(self):
         if platform == "android":
             from android.permissions import request_permissions  # só existe no Android
-            request_permissions([
-                "android.permission.READ_MEDIA_AUDIO",    # Android 13+
-                "android.permission.READ_MEDIA_IMAGES",   # capas, Android 13+
-                "android.permission.READ_EXTERNAL_STORAGE",  # Android 12 e antes
-            ], self._permissoes_respondidas)
+            from jnius import autoclass
+            sdk = autoclass("android.os.Build$VERSION").SDK_INT
+            permissoes = []
+            if sdk >= 33:
+                permissoes.extend((
+                    "android.permission.READ_MEDIA_AUDIO",
+                    "android.permission.READ_MEDIA_IMAGES",
+                    "android.permission.POST_NOTIFICATIONS",
+                ))
+            else:
+                permissoes.append("android.permission.READ_EXTERNAL_STORAGE")
+            if sdk <= 28:
+                permissoes.append("android.permission.WRITE_EXTERNAL_STORAGE")
+            request_permissions(permissoes, self._permissoes_respondidas)
             preparar_banco(self.user_data_dir)
 
+        db.criar_banco()
+        self.auth_store = AuthStore(Path(self.user_data_dir) / "contas.db")
+
         gerenciador = ScreenManager(transition=SlideTransition(duration=0.2))
-        for classe, nome in ((TelaMenu, "menu"), (TelaPlaylist, "playlist"),
+        for classe, nome in ((TelaAcesso, "acesso"), (TelaMenu, "menu"),
+                             (TelaEstatisticas, "estatisticas"),
+                             (TelaPlaylist, "playlist"),
                              (TelaPlayer, "player"), (TelaFila, "fila"),
                              (TelaArtistas, "artistas"), (TelaArtista, "artista"),
                              (TelaAlbum, "album")):
@@ -764,6 +1020,65 @@ class MainApp(App):
         # O Android avisa quando está ficando sem memória (logo antes de matar apps).
         Window.bind(on_memorywarning=lambda *a: trilha("!!! AVISO DE MEMÓRIA BAIXA do sistema"))
         return gerenciador  # o "root" do app
+
+    def cadastrar_usuario(self):
+        tela = self.root.get_screen("acesso")
+        try:
+            nome = self.auth_store.cadastrar(
+                tela.ids.nome.text, tela.ids.senha.text
+            )
+        except ValueError as erro:
+            tela.mensagem = str(erro)
+            return
+        except Exception as erro:
+            trilha(f"falha no cadastro: {erro!r}")
+            tela.mensagem = "Não foi possível salvar o cadastro neste aparelho."
+            return
+        self._entrar_como(nome)
+
+    def entrar_usuario(self):
+        tela = self.root.get_screen("acesso")
+        try:
+            nome = self.auth_store.autenticar(
+                tela.ids.nome.text, tela.ids.senha.text
+            )
+        except Exception as erro:
+            trilha(f"falha no login: {erro!r}")
+            tela.mensagem = "Não foi possível validar a conta neste aparelho."
+            return
+        if nome is None:
+            tela.mensagem = "Nome ou senha incorretos."
+            return
+        self._entrar_como(nome)
+
+    def _entrar_como(self, nome):
+        self.usuario_atual = nome
+        self.pilha.clear()
+        tela = self.root.get_screen("acesso")
+        tela.ids.senha.text = ""
+        tela.mensagem = ""
+        self.root.current = "menu"
+
+    def sair_da_conta(self):
+        self._token += 1
+        if self.carregado:
+            self._parar_som()
+        else:
+            self.motor.parar()
+        self._parar_servico_audio()
+        self.tocando = False
+        self.usuario_atual = ""
+        self.pilha.clear()
+        self.root.get_screen("acesso").selecionar_modo(False)
+        self.root.current = "acesso"
+
+    def abrir_perfil(self):
+        PerfilModal().open()
+
+    def abrir_estatisticas(self):
+        tela = self.root.get_screen("estatisticas")
+        tela.atualizar()
+        self.ir("estatisticas")
 
     def _permissoes_respondidas(self, permissoes, concedidas):
         # Pode ser chamado fora da thread do Kivy: o Clock traz de volta.
@@ -789,10 +1104,49 @@ class MainApp(App):
 
     def on_pause(self):
         trilha("on_pause (app foi para segundo plano / tela bloqueada)")
+        if self.carregado and self.tocando:
+            self._salvar_progresso_estatistica(self.motor.posicao())
+            self._iniciar_servico_audio()
         return True  # sem isso o Android mata o app ao bloquear a tela
 
     def on_resume(self):
         trilha("on_resume (app voltou)")
+
+    def _iniciar_servico_audio(self):
+        """Promove o player atual a reprodução em primeiro plano do Android."""
+        if platform != "android" or self._servico_audio_ativo:
+            return
+        try:
+            from jnius import autoclass
+            activity = autoclass("org.kivy.android.PythonActivity").mActivity
+            intent = autoclass("android.content.Intent")(
+                activity,
+                autoclass("org.miguelribeiro.mymusicgospel.PlaybackForegroundService"),
+            )
+            sdk = autoclass("android.os.Build$VERSION").SDK_INT
+            if sdk >= 26:
+                activity.startForegroundService(intent)
+            else:
+                activity.startService(intent)
+            self._servico_audio_ativo = True
+        except Exception as erro:
+            trilha(f"não foi possível iniciar serviço de áudio: {erro!r}")
+
+    def _parar_servico_audio(self):
+        if platform != "android" or not self._servico_audio_ativo:
+            return
+        try:
+            from jnius import autoclass
+            activity = autoclass("org.kivy.android.PythonActivity").mActivity
+            intent = autoclass("android.content.Intent")(
+                activity,
+                autoclass("org.miguelribeiro.mymusicgospel.PlaybackForegroundService"),
+            )
+            activity.stopService(intent)
+        except Exception as erro:
+            trilha(f"não foi possível encerrar serviço de áudio: {erro!r}")
+        finally:
+            self._servico_audio_ativo = False
 
     # ---------------- NAVEGAÇÃO ----------------
     def ir(self, tela, direcao="left"):
@@ -942,12 +1296,15 @@ class MainApp(App):
         if self.tocando:
             self.motor.pausar()  # o motor guarda ONDE parou
             self.posicao = self.motor.posicao()
+            self._salvar_progresso_estatistica(self.posicao)
             self.tocando = False
+            self._parar_servico_audio()
         else:
             # Não marca a interface como "tocando" se o motor falhar ao retomar.
             if self.motor.retomar():
                 self.posicao = self.motor.posicao()
                 self.tocando = True
+                self._iniciar_servico_audio()
 
     def buscar(self, fracao):
         """Arrastou a barra: pula para 'fracao' (0 a 1) da música."""
@@ -991,6 +1348,10 @@ class MainApp(App):
         self.carregado = False
         self.tem_musica = True
         self.musica_tocando = musica
+        self._usuario_da_faixa = self.usuario_atual
+        self._inicio_da_faixa = datetime.now()
+        self._registro_atual = None
+        self._ultima_gravacao_segundos = 0
         self.id_atual = musica["id"]
         self.titulo_atual = musica["titulo"]
         self.artista_atual = musica["artista"]
@@ -1028,9 +1389,11 @@ class MainApp(App):
                     self._falha(f"Não consegui reproduzir: {musica['titulo']}")
                     return
                 self.tocando = True
+                self._iniciar_servico_audio()
                 trilha("  motor.tocar OK (tocando)")
             else:
                 self.tocando = False
+                self._parar_servico_audio()
             if not self.duracao:
                 self.duracao = self.motor.duracao()  # plano B: pergunta ao próprio áudio
         except Exception as erro:  # erro de áudio nunca deve fechar o app
@@ -1044,6 +1407,7 @@ class MainApp(App):
     def _falha(self, mensagem):
         self.carregado = False
         self.tocando = False
+        self._parar_servico_audio()
         self.titulo_atual = mensagem
 
     def _tick(self, dt):
@@ -1054,20 +1418,36 @@ class MainApp(App):
         self.posicao = self.motor.posicao()
         if not self.duracao:
             self.duracao = self.motor.duracao()
+        segundos = int(max(0, self.posicao))
+        if segundos >= 1 and (
+                self._registro_atual is None
+                or segundos - self._ultima_gravacao_segundos >= 5):
+            self._salvar_progresso_estatistica(segundos)
         if self.motor.terminou():
             self._terminou()
 
-    def _registrar(self, segundos, completa):
-        """Só entra no histórico se ouviu >= 30 s ou >= metade (regra do db.py)."""
-        m = self.musica_tocando
-        if m is None:
+    def _salvar_progresso_estatistica(self, segundos, completa=False):
+        segundos = int(max(0, segundos or 0))
+        if self.musica_tocando is None or segundos <= 0:
             return
-        duracao = m.get("duracao_seg") or 0
-        if segundos >= 30 or (duracao and segundos >= duracao / 2):
-            try:
-                registrar_reproducao(m["id"], segundos, completa)
-            except Exception as erro:  # histórico falhar não pode derrubar o player
-                print("histórico: não consegui gravar:", erro)
+        try:
+            if self._registro_atual is None:
+                self._registro_atual = registrar_reproducao(
+                    self.musica_tocando["id"], segundos, completa,
+                    quando=self._inicio_da_faixa,
+                    usuario=self._usuario_da_faixa or self.usuario_atual,
+                )
+            else:
+                atualizar_reproducao(self._registro_atual, segundos, completa)
+            self._ultima_gravacao_segundos = segundos
+        except Exception as erro:
+            print("historico: nao consegui atualizar a escuta:", erro)
+
+    def _registrar(self, segundos, completa):
+        """Finaliza o registro incremental da sessao de escuta atual."""
+        self._salvar_progresso_estatistica(segundos, completa)
+        self._registro_atual = None
+        self._ultima_gravacao_segundos = 0
 
     def _parar_som(self):
         """Parada MANUAL (pular, voltar, trocar de música)."""
@@ -1103,8 +1483,12 @@ class MainApp(App):
         self.pular(automatico=True)
 
     def on_stop(self):
+        self._parar_servico_audio()
         trilha("on_stop (app encerrando normalmente)")
-        self.motor.parar()
+        if self.carregado:
+            self._parar_som()
+        else:
+            self.motor.parar()
 
 
 if __name__ == "__main__":

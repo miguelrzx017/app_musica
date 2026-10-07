@@ -31,7 +31,7 @@ BASE_DIR = Path(__file__).resolve().parent
 PASTA_DADOS = BASE_DIR / "dados"
 BANCO = PASTA_DADOS / "musica.db"
 
-VERSAO_SCHEMA = 1
+VERSAO_SCHEMA = 2
 
 
 ESQUEMA = """
@@ -95,6 +95,7 @@ ESQUEMA = """
     CREATE TABLE IF NOT EXISTS historico (
         id               INTEGER PRIMARY KEY AUTOINCREMENT,
         musica_id        INTEGER NOT NULL,
+        usuario          TEXT NOT NULL DEFAULT '',
         reproduzida_em   TEXT NOT NULL,
         segundos_ouvidos INTEGER NOT NULL DEFAULT 0,
         completa         INTEGER NOT NULL DEFAULT 0 CHECK (completa IN (0, 1)),
@@ -108,6 +109,7 @@ ESQUEMA = """
     CREATE INDEX IF NOT EXISTS idx_mgenero_genero    ON musica_genero(genero_id);
     CREATE INDEX IF NOT EXISTS idx_historico_musica  ON historico(musica_id);
     CREATE INDEX IF NOT EXISTS idx_historico_data    ON historico(reproduzida_em);
+    CREATE INDEX IF NOT EXISTS idx_historico_usuario ON historico(usuario);
 """
 
 
@@ -178,6 +180,11 @@ def criar_banco():
             raise RuntimeError(
                 f"Banco na versão {versao}, mas este código só conhece "
                 f"até a {VERSAO_SCHEMA}."
+            )
+
+        if versao == 1:
+            con.execute(
+                "ALTER TABLE historico ADD COLUMN usuario TEXT NOT NULL DEFAULT ''"
             )
 
         con.executescript(ESQUEMA)
@@ -449,7 +456,8 @@ def listar_generos():
 # Histórico de reprodução
 # ----------------------------------------------------------------------
 
-def registrar_reproducao(musica_id, segundos_ouvidos, completa=False, quando=None):
+def registrar_reproducao(musica_id, segundos_ouvidos, completa=False, quando=None,
+                         usuario=""):
     """
     Grava uma reprodução no histórico e devolve o id dela.
     'quando' é o início da reprodução (datetime); padrão: agora.
@@ -460,11 +468,21 @@ def registrar_reproducao(musica_id, segundos_ouvidos, completa=False, quando=Non
     with conexao() as con:
         cursor = con.execute(
             "INSERT INTO historico "
-            "(musica_id, reproduzida_em, segundos_ouvidos, completa) "
-            "VALUES (?, ?, ?, ?)",
-            (musica_id, quando, int(segundos_ouvidos), 1 if completa else 0),
+            "(musica_id, usuario, reproduzida_em, segundos_ouvidos, completa) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (musica_id, str(usuario or ""), quando, int(segundos_ouvidos),
+             1 if completa else 0),
         )
         return cursor.lastrowid
+
+
+def atualizar_reproducao(registro_id, segundos_ouvidos, completa=False):
+    """Atualiza o progresso já salvo de uma sessão de escuta."""
+    with conexao() as con:
+        con.execute(
+            "UPDATE historico SET segundos_ouvidos = ?, completa = ? WHERE id = ?",
+            (int(segundos_ouvidos), 1 if completa else 0, int(registro_id)),
+        )
 
 
 def historico_recente(limite=50):
@@ -478,6 +496,79 @@ def historico_recente(limite=50):
             ORDER BY h.reproduzida_em DESC, h.id DESC
             LIMIT ?
         """, (limite,)))
+
+
+def estatisticas_musicas(usuario, desde=None, limite=100):
+    """Faixas mais ouvidas pelo usuário, com execuções, tempo e capa."""
+    where = "h.usuario = ?"
+    params = [str(usuario)]
+    if desde:
+        where += " AND h.reproduzida_em >= ?"
+        params.append(desde)
+    params.append(int(limite))
+    with conexao() as con:
+        return _dicts(con.execute(f"""
+            SELECT m.id, m.titulo, a.nome AS artista, al.nome AS album,
+                   al.capa, COUNT(h.id) AS reproducoes,
+                   SUM(h.segundos_ouvidos) AS segundos_ouvidos,
+                   SUM(h.completa) AS completas,
+                   MAX(h.reproduzida_em) AS ultima_reproducao
+            FROM historico h
+            JOIN musicas m ON m.id = h.musica_id
+            JOIN artistas a ON a.id = m.artista_id
+            JOIN albuns al ON al.id = m.album_id
+            WHERE {where}
+            GROUP BY m.id
+            ORDER BY reproducoes DESC, segundos_ouvidos DESC,
+                     sem_acento(m.titulo)
+            LIMIT ?
+        """, params))
+
+
+def estatisticas_artistas(usuario, desde=None, limite=100):
+    """Artistas mais ouvidos pelo usuário, incluindo faixas distintas."""
+    where = "h.usuario = ?"
+    params = [str(usuario)]
+    if desde:
+        where += " AND h.reproduzida_em >= ?"
+        params.append(desde)
+    params.append(int(limite))
+    with conexao() as con:
+        return _dicts(con.execute(f"""
+            SELECT a.id, a.nome, COUNT(h.id) AS reproducoes,
+                   COUNT(DISTINCT m.id) AS musicas_diferentes,
+                   SUM(h.segundos_ouvidos) AS segundos_ouvidos,
+                   SUM(h.completa) AS completas
+            FROM historico h
+            JOIN musicas m ON m.id = h.musica_id
+            JOIN artistas a ON a.id = m.artista_id
+            WHERE {where}
+            GROUP BY a.id
+            ORDER BY reproducoes DESC, segundos_ouvidos DESC,
+                     sem_acento(a.nome)
+            LIMIT ?
+        """, params))
+
+
+def resumo_estatisticas(usuario, desde=None):
+    """Resumo geral do histórico de escuta do usuário."""
+    where = "h.usuario = ?"
+    params = [str(usuario)]
+    if desde:
+        where += " AND h.reproduzida_em >= ?"
+        params.append(desde)
+    with conexao() as con:
+        linha = con.execute(f"""
+            SELECT COUNT(h.id) AS reproducoes,
+                   COUNT(DISTINCT h.musica_id) AS musicas_diferentes,
+                   COUNT(DISTINCT m.artista_id) AS artistas_diferentes,
+                   COALESCE(SUM(h.segundos_ouvidos), 0) AS segundos_ouvidos,
+                   COALESCE(SUM(h.completa), 0) AS completas
+            FROM historico h
+            JOIN musicas m ON m.id = h.musica_id
+            WHERE {where}
+        """, params).fetchone()
+        return dict(linha)
 
 
 # ----------------------------------------------------------------------
