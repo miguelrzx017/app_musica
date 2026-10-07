@@ -15,6 +15,7 @@ No Python, qualquer tela chama App.get_running_app().pular(), etc.
 """
 
 import faulthandler
+import hashlib
 import os
 import time
 from datetime import datetime, timedelta
@@ -98,6 +99,7 @@ from kivy.properties import (BooleanProperty, ListProperty, NumericProperty,
 from kivy.resources import resource_add_path, resource_find
 from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.filechooser import FileChooserIconView
 from kivy.uix.label import Label
 from kivy.uix.modalview import ModalView
 from kivy.uix.screenmanager import Screen, ScreenManager, SlideTransition
@@ -424,6 +426,42 @@ class LinhaFila(ButtonBehavior, BoxLayout):
     capa = StringProperty("")
     indice = NumericProperty(0)  # posição ABSOLUTA dentro da fila
 
+    def on_touch_down(self, touch):
+        # As barrinhas à direita indicam a alça; o resto da linha continua
+        # disponível para rolar a lista e tocar na música.
+        if self.collide_point(*touch.pos) and touch.x >= self.right - dp(52):
+            self._toque_fila = touch
+            self._inicio_arraste = touch.pos
+            self._arrastando = False
+            resultado = super().on_touch_down(touch)
+            touch.grab(self)
+            return resultado or True
+        return super().on_touch_down(touch)
+
+    def on_touch_move(self, touch):
+        if getattr(self, "_toque_fila", None) is touch and touch.grab_current is self:
+            dx = touch.x - self._inicio_arraste[0]
+            dy = touch.y - self._inicio_arraste[1]
+            if not self._arrastando and (dx * dx + dy * dy) ** .5 > dp(12):
+                self._arrastando = True
+            if self._arrastando:
+                return True
+        return super().on_touch_move(touch)
+
+    def on_touch_up(self, touch):
+        if getattr(self, "_toque_fila", None) is touch and touch.grab_current is self:
+            arrastando = self._arrastando
+            self._toque_fila = None
+            touch.ungrab(self)
+            if arrastando:
+                alvos = [w for w in self.parent.children if isinstance(w, LinhaFila)]
+                if alvos:
+                    alvo = min(alvos, key=lambda w: abs(w.center_y - touch.y))
+                    App.get_running_app().mover_fila(int(self.indice), int(alvo.indice))
+                return True
+            return super().on_touch_up(touch)
+        return super().on_touch_up(touch)
+
     def on_release(self):
         App.get_running_app().tocar_da_fila(int(self.indice))
 
@@ -494,6 +532,22 @@ class OpcoesFila(ModalView):
 
 class PerfilModal(ModalView):
     """Opções da conta aberta no aparelho."""
+
+
+class SeletorFotoPerfil(ModalView):
+    """Seletor local para escolher uma imagem de perfil."""
+
+    pasta_inicial = StringProperty("")
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.pasta_inicial = "/storage/emulated/0" if platform == "android" else str(Path.home())
+
+    def escolher(self):
+        selecao = self.ids.arquivos.selection
+        if selecao:
+            App.get_running_app().definir_foto_perfil(selecao[0])
+            self.dismiss()
 
 
 # ----------------------------------------------------------------------
@@ -968,6 +1022,7 @@ class MainApp(App):
     info_artista_logo = StringProperty("")   # fotinho redonda (arquivos/logos)
     info_musica = StringProperty("")
     usuario_atual = StringProperty("")
+    foto_perfil = StringProperty("")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1055,6 +1110,7 @@ class MainApp(App):
 
     def _entrar_como(self, nome):
         self.usuario_atual = nome
+        self.foto_perfil = self.auth_store.obter_foto_perfil(nome)
         self.pilha.clear()
         tela = self.root.get_screen("acesso")
         tela.ids.senha.text = ""
@@ -1070,12 +1126,29 @@ class MainApp(App):
         self._parar_servico_audio()
         self.tocando = False
         self.usuario_atual = ""
+        self.foto_perfil = ""
         self.pilha.clear()
         self.root.get_screen("acesso").selecionar_modo(False)
         self.root.current = "acesso"
 
     def abrir_perfil(self):
         PerfilModal().open()
+
+    def abrir_seletor_foto_perfil(self):
+        SeletorFotoPerfil().open()
+
+    def definir_foto_perfil(self, origem):
+        origem = Path(origem)
+        if not origem.is_file() or origem.suffix.lower() not in (".png", ".jpg", ".jpeg"):
+            return
+        pasta = Path(self.user_data_dir) / "fotos_perfil"
+        pasta.mkdir(parents=True, exist_ok=True)
+        extensao = origem.suffix.lower()
+        chave = hashlib.sha256(self.usuario_atual.casefold().encode("utf-8")).hexdigest()[:16]
+        destino = pasta / f"{chave}{extensao}"
+        shutil.copyfile(origem, destino)
+        self.auth_store.salvar_foto_perfil(self.usuario_atual, str(destino))
+        self.foto_perfil = str(destino)
 
     def abrir_estatisticas(self):
         tela = self.root.get_screen("estatisticas")
@@ -1254,6 +1327,13 @@ class MainApp(App):
             fila.mover(f, indice, indice + 1)
         elif nome == "remover":
             fila.remover(f, indice)
+        self._atualizar_fila()
+
+    def mover_fila(self, de, para):
+        f = self.fila_atual
+        if f is None or de <= f["posicao"] or para <= f["posicao"]:
+            return
+        fila.mover(f, de, para)
         self._atualizar_fila()
 
     def _atualizar_fila(self):

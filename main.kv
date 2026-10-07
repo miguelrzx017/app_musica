@@ -47,6 +47,12 @@
         Ellipse:
             pos: self.center_x - dp(14), self.y + dp(5)
             size: dp(28), dp(20)
+    ImagemArredondada:
+        pos: root.x + dp(2), root.y + dp(2)
+        size: dp(42), dp(42)
+        raio: dp(21)
+        source: app.foto_perfil
+        opacity: 1 if app.foto_perfil else 0
 
 <FormaDeOnda@Widget>:
     size_hint_y: None
@@ -416,7 +422,7 @@
 # ======================================================================
 <PerfilModal>:
     size_hint: .82, None
-    height: dp(210)
+    height: dp(300)
     auto_dismiss: True
     background: ""
     background_color: 0, 0, 0, 0
@@ -431,10 +437,23 @@
                 pos: self.pos
                 size: self.size
                 radius: [dp(22)]
+        ImagemArredondada:
+            size_hint: None, None
+            size: dp(76), dp(76)
+            pos_hint: {"center_x": .5}
+            raio: dp(38)
+            source: app.foto_perfil
         Label:
             text: app.usuario_atual
             font_name: "DMSansMedium"
             font_size: "20sp"
+        Button:
+            text: "Alterar foto de perfil"
+            size_hint_y: None
+            height: dp(44)
+            background_normal: ""
+            background_color: (.28, .28, .28, 1)
+            on_release: app.abrir_seletor_foto_perfil()
         Button:
             text: "Sair da conta"
             size_hint_y: None
@@ -451,6 +470,37 @@
             background_normal: ""
             background_color: (0, 0, 0, 0)
             on_release: root.dismiss()
+
+<SeletorFotoPerfil>:
+    size_hint: .96, .9
+    auto_dismiss: True
+    title: "Escolher foto"
+    BoxLayout:
+        orientation: "vertical"
+        spacing: dp(8)
+        padding: dp(10)
+        canvas.before:
+            Color:
+                rgba: (.12, .12, .12, 1)
+            RoundedRectangle:
+                pos: self.pos
+                size: self.size
+                radius: [dp(18)]
+        FileChooserIconView:
+            id: arquivos
+            path: root.pasta_inicial
+            filters: ["*.png", "*.jpg", "*.jpeg"]
+            show_hidden: False
+        BoxLayout:
+            size_hint_y: None
+            height: dp(46)
+            spacing: dp(8)
+            Button:
+                text: "Cancelar"
+                on_release: root.dismiss()
+            Button:
+                text: "Usar foto"
+                on_release: root.escolher()
 
 <TelaAcesso>:
     BoxLayout:

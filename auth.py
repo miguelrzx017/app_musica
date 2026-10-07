@@ -24,9 +24,13 @@ class AuthStore:
                     nome_chave TEXT NOT NULL UNIQUE,
                     sal BLOB NOT NULL,
                     senha_hash BLOB NOT NULL,
-                    criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    foto_perfil TEXT NOT NULL DEFAULT ''
                 )
             """)
+            colunas = {linha[1] for linha in con.execute("PRAGMA table_info(usuarios)")}
+            if "foto_perfil" not in colunas:
+                con.execute("ALTER TABLE usuarios ADD COLUMN foto_perfil TEXT NOT NULL DEFAULT ''")
 
     @contextmanager
     def _conectar(self):
@@ -81,3 +85,18 @@ class AuthStore:
         if not hmac.compare_digest(tentativa, usuario["senha_hash"]):
             return None
         return usuario["nome"]
+
+    def obter_foto_perfil(self, nome):
+        with self._conectar() as con:
+            usuario = con.execute(
+                "SELECT foto_perfil FROM usuarios WHERE nome_chave = ?",
+                (" ".join(str(nome).split()).casefold(),),
+            ).fetchone()
+        return usuario["foto_perfil"] if usuario else ""
+
+    def salvar_foto_perfil(self, nome, caminho):
+        with self._conectar() as con:
+            con.execute(
+                "UPDATE usuarios SET foto_perfil = ? WHERE nome_chave = ?",
+                (str(caminho or ""), " ".join(str(nome).split()).casefold()),
+            )
