@@ -7,3 +7,4 @@
 [   74.91s |    0 MB]   motor.carregar(...) começando [MotorPygame]
 [   74.92s |    0 MB]   motor.carregar OK; chamando motor.tocar()
 [   74.92s |    0 MB]   motor.tocar OK (tocando)
+[ 1771.66s |    0 MB] on_stop (app encerrando normalmente)

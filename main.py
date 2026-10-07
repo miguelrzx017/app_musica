@@ -1006,6 +1006,8 @@ class MainApp(App):
             preparar_banco(self.user_data_dir)
 
         db.criar_banco()
+        # Atualiza o catálogo em instalações que já tinham um banco persistente.
+        db.importar_biblioteca()
         self.auth_store = AuthStore(Path(self.user_data_dir) / "contas.db")
 
         gerenciador = ScreenManager(transition=SlideTransition(duration=0.2))

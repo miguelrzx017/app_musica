@@ -253,6 +253,10 @@ def importar_biblioteca(dicionario=None):
                 con, item["album"], artista_id, item.get("ano"), item.get("capa")
             )
 
+            musica_existente = con.execute(
+                "SELECT id FROM musicas WHERE arquivo = ?", (item["arquivo"],)
+            ).fetchone()
+
             con.execute("""
                 INSERT INTO musicas (titulo, artista_id, album_id, arquivo)
                 VALUES (?, ?, ?, ?)
@@ -265,6 +269,20 @@ def importar_biblioteca(dicionario=None):
             musica_id = con.execute(
                 "SELECT id FROM musicas WHERE arquivo = ?", (item["arquivo"],)
             ).fetchone()[0]
+
+            # Faixas novas entram na playlist principal em bancos já existentes.
+            # Não recoloca faixas antigas que o usuário possa ter removido.
+            if musica_existente is None:
+                playlist = con.execute(
+                    "SELECT id FROM playlists WHERE nome = 'Rock Gospel'"
+                ).fetchone()
+                if playlist is not None:
+                    con.execute("""
+                        INSERT OR IGNORE INTO playlist_musicas
+                            (playlist_id, musica_id, posicao)
+                        SELECT ?, ?, COALESCE(MAX(posicao), 0) + 1
+                        FROM playlist_musicas WHERE playlist_id = ?
+                    """, (playlist["id"], musica_id, playlist["id"]))
 
             # Regrava os gêneros para refletir exatamente o biblioteca.py.
             con.execute(

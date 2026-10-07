@@ -647,6 +647,16 @@ musicas = {
         'generos': ['rock', 'groove'],
         'arquivo': 'arquivos/musicas/deus_da_minha_vida.mp3',
         'capa': 'arquivos/capas_de_album/thalles_ao_vivo.jpg'
+    },
+
+    66: {
+        'titulo': 'Depois da Guerra',
+        'artista': 'Oficina G3',
+        'album': 'Depois da Guerra',
+        'ano': 2008,
+        'generos': ['rock', 'metal'],
+        'arquivo': 'arquivos/musicas/depois_da_guerra.mp3',
+        'capa': 'arquivos/capas_de_album/ddg.jpg'
     }
 }
 
