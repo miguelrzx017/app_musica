@@ -13,7 +13,7 @@ fullscreen = 0
 icon.filename = arquivos/icones/icon.png
 
 android.api = 35
-android.minapi = 23
+android.minapi = 24
 android.ndk = 28c
 android.archs = arm64-v8a, armeabi-v7a
 android.accept_sdk_license = True

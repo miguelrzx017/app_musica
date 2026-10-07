@@ -1,10 +1,10 @@
 [    0.00s |    0 MB] app iniciando
-[   54.26s |    0 MB] _tocar #1: 'A Alegria do Senhor' (iniciar=True)
-[   54.34s |    0 MB]   motor.carregar(...) começando [MotorPygame]
-[   54.44s |    0 MB]   motor.carregar OK; chamando motor.tocar()
-[   54.44s |    0 MB]   motor.tocar OK (tocando)
-[   74.78s |    0 MB] _tocar #2: 'Além do que os Olhos Podem Ver' (iniciar=True)
-[   74.91s |    0 MB]   motor.carregar(...) começando [MotorPygame]
-[   74.92s |    0 MB]   motor.carregar OK; chamando motor.tocar()
-[   74.92s |    0 MB]   motor.tocar OK (tocando)
-[ 1771.66s |    0 MB] on_stop (app encerrando normalmente)
+[   51.65s |    0 MB] _tocar #1: 'Acusador' (iniciar=True)
+[   51.76s |    0 MB]   motor.carregar(...) começando [MotorPygame]
+[   51.87s |    0 MB]   motor.carregar OK; chamando motor.tocar()
+[   51.87s |    0 MB]   motor.tocar OK (tocando)
+[  110.67s |    0 MB] _tocar #2: 'Depois da Guerra' (iniciar=True)
+[  110.72s |    0 MB]   motor.carregar(...) começando [MotorPygame]
+[  110.74s |    0 MB]   motor.carregar OK; chamando motor.tocar()
+[  110.74s |    0 MB]   motor.tocar OK (tocando)
+[  202.61s |    0 MB] on_stop (app encerrando normalmente)
