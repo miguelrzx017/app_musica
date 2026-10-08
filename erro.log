@@ -44,3 +44,49 @@ Traceback (most recent call last):
     assert self in touch.ud
            ^^^^^^^^^^^^^^^^
 AssertionError
+
+=== 2026-10-07 17:52:52 ===
+Traceback (most recent call last):
+  File "C:\Users\miguel toba\Projeto_app_musica\.venv\Lib\site-packages\kivy\base.py", line 339, in mainloop
+    self.idle()
+    ~~~~~~~~~^^
+  File "C:\Users\miguel toba\Projeto_app_musica\.venv\Lib\site-packages\kivy\base.py", line 383, in idle
+    self.dispatch_input()
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\miguel toba\Projeto_app_musica\.venv\Lib\site-packages\kivy\base.py", line 334, in dispatch_input
+    post_dispatch_input(*pop(0))
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "C:\Users\miguel toba\Projeto_app_musica\.venv\Lib\site-packages\kivy\base.py", line 302, in post_dispatch_input
+    wid.dispatch('on_touch_up', me)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "kivy\\_event.pyx", line 731, in kivy._event.EventDispatcher.dispatch
+  File "c:\Users\miguel toba\Projeto_app_musica\main.py", line 462, in on_touch_up
+    return super().on_touch_up(touch)
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "C:\Users\miguel toba\Projeto_app_musica\.venv\Lib\site-packages\kivy\uix\behaviors\button.py", line 164, in on_touch_up
+    assert self in touch.ud
+           ^^^^^^^^^^^^^^^^
+AssertionError
+
+=== 2026-10-07 17:52:52 ===
+Traceback (most recent call last):
+  File "kivy\\_clock.pyx", line 649, in kivy._clock.CyClockBase._process_events
+  File "kivy\\_clock.pyx", line 218, in kivy._clock.ClockEvent.tick
+  File "C:\Users\miguel toba\Projeto_app_musica\.venv\Lib\site-packages\kivy\uix\scrollview.py", line 1235, in _do_touch_up
+    super(ScrollView, self).on_touch_up(touch)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "C:\Users\miguel toba\Projeto_app_musica\.venv\Lib\site-packages\kivy\uix\widget.py", line 611, in on_touch_up
+    if child.dispatch('on_touch_up', touch):
+       ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "kivy\\_event.pyx", line 731, in kivy._event.EventDispatcher.dispatch
+  File "C:\Users\miguel toba\Projeto_app_musica\.venv\Lib\site-packages\kivy\uix\widget.py", line 611, in on_touch_up
+    if child.dispatch('on_touch_up', touch):
+       ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "kivy\\_event.pyx", line 731, in kivy._event.EventDispatcher.dispatch
+  File "c:\Users\miguel toba\Projeto_app_musica\main.py", line 463, in on_touch_up
+    return super().on_touch_up(touch)
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "C:\Users\miguel toba\Projeto_app_musica\.venv\Lib\site-packages\kivy\uix\behaviors\button.py", line 164, in on_touch_up
+    assert self in touch.ud
+           ^^^^^^^^^^^^^^^^
+AssertionError

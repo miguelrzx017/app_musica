@@ -12,7 +12,7 @@ A solução tem duas partes:
   1) POSIÇÃO: o app mede o tempo por conta própria (um relógio) quando o
      backend não informa a posição. Assim a barra sempre anda.
   2) PAUSA/SEEK: precisam de um backend que saiba pular no tempo:
-       - Android  -> usamos o MediaPlayer do próprio Android (via pyjnius)
+       - Android  -> serviço Media3 com sessão de mídia e controles de notificação
        - PC       -> pygame.mixer.music (MotorPygame):  pip install pygame
                      (o ffpyplayer NÃO é usado: derruba o app no Windows)
      Se nenhum dos dois existir, o app avisa no terminal e a música
@@ -224,136 +224,111 @@ class MotorKivy:
 
 
 class MotorAndroid:
-    """MediaPlayer nativo do Android (pyjnius). Pausa e seek funcionam de verdade."""
+    """Player Media3 controlado por um MediaSessionService nativo do Android."""
 
     suporta_seek = True
 
     def __init__(self):
         from jnius import autoclass  # só existe no Android
 
-        self._MediaPlayer = autoclass("android.media.MediaPlayer")
-        try:
-            activity = autoclass("org.kivy.android.PythonActivity").mActivity
-            self._wake_context = activity.getApplicationContext()
-        except Exception:
-            self._wake_context = None
-        self.mp = None
-        self._tocando = False  # "queremos que esteja tocando" (False = pausado)
-        self._started_at = 0.0  # evita detectar falso "fim" logo depois do start()
+        self._activity = autoclass("org.kivy.android.PythonActivity").mActivity
+        self._Service = autoclass(
+            "org.miguelribeiro.mymusicgospel.PlaybackMediaService"
+        )
+        self._queue_json = ""
+        self._current_path = ""
+        self._loaded = False
 
     def carregar(self, caminho):
-        self.parar()
-        mp = self._MediaPlayer()
-        try:
-            if self._wake_context is not None:
-                # Mantém a CPU acordada enquanto o áudio toca com a tela apagada.
-                mp.setWakeMode(self._wake_context, 1)  # PARTIAL_WAKE_LOCK
-            mp.setDataSource(str(caminho))
-            mp.prepare()  # arquivo local
-        except Exception as erro:
-            print("áudio: não consegui abrir", caminho, "->", erro)
-            try:
-                mp.reset()
-            except Exception:
-                pass
-            try:
-                mp.release()
-            except Exception:
-                pass
+        caminho = str(caminho)
+        if not Path(caminho).is_file():
+            print("áudio: arquivo não encontrado:", caminho)
             return False
-
-        self.mp = mp
-        self._tocando = False
+        self._current_path = caminho
+        self._loaded = True
         return True
 
+    def configurar_fila(self, payload):
+        """Guarda a fila completa que o serviço nativo vai reproduzir."""
+        self._queue_json = str(payload or "")
+
+    def sincronizar_fila(self, payload):
+        self.configurar_fila(payload)
+        if self._queue_json:
+            self._Service.syncQueue(self._activity, self._queue_json)
+
+    def preparar_pausado(self):
+        if self._queue_json:
+            self._Service.preparePaused(self._activity, self._queue_json)
+
     def parar(self):
-        mp, self.mp = self.mp, None
-        self._tocando = False
-        if mp is not None:
-            try:
-                mp.stop()
-            except Exception:
-                pass
-            try:
-                mp.release()
-            except Exception:
-                pass
+        self._loaded = False
+        self._current_path = ""
+        self._Service.stopPlayback(self._activity)
 
     def tocar(self):
-        if self.mp is None:
+        if not self._loaded or not self._queue_json:
             return False
         try:
-            self.mp.start()
-            self._tocando = True
-            self._started_at = time.monotonic()
+            self._Service.startPlayback(self._activity, self._queue_json)
             return True
         except Exception as erro:
-            self._tocando = False
             print("áudio: play Android falhou:", erro)
-            try:
-                self.mp.reset()
-            except Exception:
-                pass
             return False
 
     def pausar(self):
-        if self.mp is None or not self._tocando:
-            return
-        self._tocando = False
-        try:
-            self.mp.pause()
-        except Exception as erro:
-            print("áudio: pause falhou:", erro)
+        self._Service.pausePlayback(self._activity)
 
     def retomar(self):
-        if self.mp is None or self._tocando:
+        if not self._loaded:
             return False
         try:
-            self.mp.start()  # continua exatamente de onde o pause() parou
-            self._tocando = True
-            self._started_at = time.monotonic()
+            self._Service.playPlayback(self._activity)
             return True
         except Exception as erro:
-            self._tocando = False
             print("áudio: start Android falhou:", erro)
             return False
 
     def buscar(self, segundos):
-        if self.mp is None:
+        if not self._loaded:
             return False
         try:
-            self.mp.seekTo(int(max(0.0, segundos) * 1000))
+            self._Service.seekTo(self._activity, int(max(0.0, segundos) * 1000))
         except Exception as erro:
             print("áudio: seek falhou:", erro)
             return False
         return True
 
     def posicao(self):
-        if self.mp is None:
-            return 0.0
         try:
-            return self.mp.getCurrentPosition() / 1000.0
+            return self._Service.getPositionMs() / 1000.0
         except Exception:
             return 0.0
 
     def duracao(self):
-        if self.mp is None:
-            return 0.0
         try:
-            return self.mp.getDuration() / 1000.0
+            return self._Service.getDurationMs() / 1000.0
         except Exception:
             return 0.0
 
     def terminou(self):
-        if self.mp is None or not self._tocando:
-            return False
-        if time.monotonic() - self._started_at < 1.0:
-            return False
-        try:
-            return not self.mp.isPlaying()  # queríamos tocar e parou sozinho = fim
-        except Exception:
-            return False
+        # O serviço Media3 avança a fila sem depender do relógio do Kivy.
+        return False
 
+    def estado(self):
+        """Snapshot atualizado pelo serviço na thread Android."""
+        try:
+            media_id = self._Service.getCurrentMediaId()
+            return {
+                "media_id": str(media_id) if media_id is not None else "",
+                "posicao": self.posicao(),
+                "duracao": self.duracao(),
+                "tocando": bool(self._Service.isPlaying()),
+                "carregado": bool(self._Service.hasMediaItem()),
+            }
+        except Exception:
+            return {"media_id": "", "posicao": 0.0, "duracao": 0.0,
+                    "tocando": False, "carregado": False}
 
 class MotorPygame:
     """
@@ -529,7 +504,7 @@ def criar_motor():
         try:
             return MotorAndroid()
         except Exception as erro:
-            print("áudio: MediaPlayer indisponível, usando o Kivy:", erro)
+            print("áudio: Media3 indisponível, usando o Kivy:", erro)
     else:
         # PC: pygame primeiro (estável). O ffpyplayer do Kivy derruba o app no Windows.
         try:

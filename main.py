@@ -16,6 +16,7 @@ No Python, qualquer tela chama App.get_running_app().pular(), etc.
 
 import faulthandler
 import hashlib
+import json
 import os
 import time
 from datetime import datetime, timedelta
@@ -73,7 +74,7 @@ trilha("app iniciando")
 # O ffpyplayer NÃO é mais usado: no Windows ele derrubava o app (access violation
 # dentro de MediaPlayer(...)) ao abrir a segunda música. Se o pygame faltar, o app
 # cai no áudio básico do Kivy, forçado para SDL2 (estável, mas sem pausar/pular).
-# No Android o app usa o MediaPlayer do sistema, então nada disso vale lá.
+# No Android, a sessão Media3 reproduz a fila e mantém os controles na notificação.
 # (Precisa ser decidido ANTES de qualquer import do Kivy.)
 if "ANDROID_ARGUMENT" not in os.environ:
     os.environ["KIVY_AUDIO"] = "sdl2"
@@ -1181,47 +1182,22 @@ class MainApp(App):
         trilha("on_pause (app foi para segundo plano / tela bloqueada)")
         if self.carregado and self.tocando:
             self._salvar_progresso_estatistica(self.motor.posicao())
+            # No Android, o MediaSessionService já é dono do áudio e da fila.
             self._iniciar_servico_audio()
         return True  # sem isso o Android mata o app ao bloquear a tela
 
     def on_resume(self):
         trilha("on_resume (app voltou)")
+        self._sincronizar_estado_android()
 
     def _iniciar_servico_audio(self):
-        """Promove o player atual a reprodução em primeiro plano do Android."""
-        if platform != "android" or self._servico_audio_ativo:
-            return
-        try:
-            from jnius import autoclass
-            activity = autoclass("org.kivy.android.PythonActivity").mActivity
-            intent = autoclass("android.content.Intent")(
-                activity,
-                autoclass("org.miguelribeiro.mymusicgospel.PlaybackForegroundService"),
-            )
-            sdk = autoclass("android.os.Build$VERSION").SDK_INT
-            if sdk >= 26:
-                activity.startForegroundService(intent)
-            else:
-                activity.startService(intent)
-            self._servico_audio_ativo = True
-        except Exception as erro:
-            trilha(f"não foi possível iniciar serviço de áudio: {erro!r}")
+        """Compatibilidade: o motor Android inicia o serviço Media3 ao tocar."""
+        return
 
     def _parar_servico_audio(self):
-        if platform != "android" or not self._servico_audio_ativo:
-            return
-        try:
-            from jnius import autoclass
-            activity = autoclass("org.kivy.android.PythonActivity").mActivity
-            intent = autoclass("android.content.Intent")(
-                activity,
-                autoclass("org.miguelribeiro.mymusicgospel.PlaybackForegroundService"),
-            )
-            activity.stopService(intent)
-        except Exception as erro:
-            trilha(f"não foi possível encerrar serviço de áudio: {erro!r}")
-        finally:
-            self._servico_audio_ativo = False
+        # Pausar não encerra a sessão: o sistema mantém a notificação e o botão
+        # de retomar disponíveis. Parar a faixa é responsabilidade do motor.
+        return
 
     # ---------------- NAVEGAÇÃO ----------------
     def ir(self, tela, direcao="left"):
@@ -1307,6 +1283,7 @@ class MainApp(App):
             fila.embaralhar_restante(f)
         self.aleatorio = f["aleatorio"]
         self._atualizar_fila()
+        self._sincronizar_fila_android()
 
     def abrir_opcoes_fila(self, indice):
         f = self.fila_atual
@@ -1328,6 +1305,7 @@ class MainApp(App):
         elif nome == "remover":
             fila.remover(f, indice)
         self._atualizar_fila()
+        self._sincronizar_fila_android()
 
     def mover_fila(self, de, para):
         f = self.fila_atual
@@ -1335,9 +1313,94 @@ class MainApp(App):
             return
         fila.mover(f, de, para)
         self._atualizar_fila()
+        self._sincronizar_fila_android()
 
     def _atualizar_fila(self):
         self.root.get_screen("fila").atualizar()
+
+    def _payload_fila_android(self):
+        f = self.fila_atual
+        if platform != "android" or f is None:
+            return ""
+        musicas = f.get("itens", [])
+        indice_atual = f.get("posicao", 0)
+        musica_atual = musicas[indice_atual] if 0 <= indice_atual < len(musicas) else None
+        id_atual = str(musica_atual.get("id", "")) if musica_atual else ""
+        faixas = []
+        indice_nativo = 0
+        for musica in musicas:
+            caminho = _achar(musica.get("arquivo"))
+            if not caminho or not Path(caminho).is_file():
+                continue
+            if str(musica.get("id", "")) == id_atual:
+                indice_nativo = len(faixas)
+            capa = capa_da_musica(musica)
+            faixas.append({
+                "id": str(musica["id"]),
+                "title": musica.get("titulo", ""),
+                "artist": musica.get("artista", ""),
+                "album": musica.get("album", ""),
+                "path": caminho,
+                "artwork": capa,
+            })
+        return json.dumps({
+            "tracks": faixas,
+            "index": indice_nativo,
+            "user": self._usuario_da_faixa or self.usuario_atual,
+            "database": str(db.BANCO),
+        }, ensure_ascii=False)
+
+    def _sincronizar_fila_android(self):
+        if platform != "android" or self.fila_atual is None:
+            return
+        sincronizar = getattr(self.motor, "sincronizar_fila", None)
+        if sincronizar is None:
+            return
+        try:
+            sincronizar(self._payload_fila_android())
+        except Exception as erro:
+            trilha(f"não foi possível atualizar a fila do Media3: {erro!r}")
+
+    def _sincronizar_estado_android(self):
+        if platform != "android":
+            return
+        obter_estado = getattr(self.motor, "estado", None)
+        if obter_estado is None:
+            return
+        estado = obter_estado()
+        media_id = estado.get("media_id", "")
+        if not media_id:
+            return
+        f = self.fila_atual
+        if f is not None:
+            for indice, musica in enumerate(f.get("itens", [])):
+                if str(musica.get("id", "")) == media_id:
+                    f["posicao"] = indice
+                    if self.id_atual != musica["id"]:
+                        self._sincronizar_faixa_android(musica)
+                    break
+        self.carregado = estado.get("carregado", False)
+        self.tocando = estado.get("tocando", False)
+        self.posicao = estado.get("posicao", 0.0)
+        self.duracao = estado.get("duracao", 0.0) or self.duracao
+
+    def _sincronizar_faixa_android(self, musica):
+        """Atualiza a interface quando a sessão avança fora da Activity."""
+        self._token += 1
+        self.musica_tocando = musica
+        self.id_atual = musica["id"]
+        self.titulo_atual = musica["titulo"]
+        self.artista_atual = musica["artista"]
+        self.capa_atual = capa_da_musica(musica)
+        self._atualizar_info(musica)
+        self._usuario_da_faixa = self.usuario_atual
+        self._inicio_da_faixa = datetime.now()
+        self._registro_atual = None
+        self._ultima_gravacao_segundos = 0
+        self.posicao = 0
+        self.duracao = musica.get("duracao_seg") or 0
+        self.tem_musica = True
+        self._atualizar_fila()
 
     # ---------------- BOTÕES DO PLAYER ----------------
     def pular(self, automatico=False):
@@ -1455,6 +1518,9 @@ class MainApp(App):
             self._falha(f"Não achei: {musica['arquivo']}")
             return
         try:
+            configurar_fila = getattr(self.motor, "configurar_fila", None)
+            if configurar_fila is not None:
+                configurar_fila(self._payload_fila_android())
             trilha(f"  motor.carregar(...) começando [{type(self.motor).__name__}]")
             if not self.motor.carregar(caminho):
                 self._falha(f"Não consegui abrir: {musica['titulo']}")
@@ -1475,7 +1541,9 @@ class MainApp(App):
                 trilha("  motor.tocar OK (tocando)")
             else:
                 self.tocando = False
-                self._parar_servico_audio()
+                preparar_pausado = getattr(self.motor, "preparar_pausado", None)
+                if preparar_pausado is not None:
+                    preparar_pausado()
             if not self.duracao:
                 self.duracao = self.motor.duracao()  # plano B: pergunta ao próprio áudio
         except Exception as erro:  # erro de áudio nunca deve fechar o app
@@ -1495,6 +1563,9 @@ class MainApp(App):
     def _tick(self, dt):
         """4x por segundo: lê a posição (a barra de progresso se move sozinha)
         e confere se a música acabou."""
+        if platform == "android":
+            self._sincronizar_estado_android()
+            return  # o MediaSessionService atualiza e registra o áudio nativo
         if not self.carregado or not self.tocando:
             return
         self.posicao = self.motor.posicao()
@@ -1509,6 +1580,8 @@ class MainApp(App):
             self._terminou()
 
     def _salvar_progresso_estatistica(self, segundos, completa=False):
+        if platform == "android":
+            return  # a sessão nativa registra escutas durante todo o segundo plano
         segundos = int(max(0, segundos or 0))
         if self.musica_tocando is None or segundos <= 0:
             return
@@ -1567,6 +1640,9 @@ class MainApp(App):
     def on_stop(self):
         self._parar_servico_audio()
         trilha("on_stop (app encerrando normalmente)")
+        if platform == "android":
+            # Fechar a Activity não deve destruir o player que vive no serviço.
+            return
         if self.carregado:
             self._parar_som()
         else:

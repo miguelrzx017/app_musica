@@ -1,25 +1,23 @@
 [    0.00s |    0 MB] app iniciando
-[   49.19s |    0 MB] _tocar #1: 'A Alegria do Senhor' (iniciar=True)
-[   49.26s |    0 MB]   motor.carregar(...) começando [MotorPygame]
-[   49.36s |    0 MB]   motor.carregar OK; chamando motor.tocar()
-[   49.36s |    0 MB]   motor.tocar OK (tocando)
-[   51.80s |    0 MB] _tocar #2: 'O Tempo' (iniciar=True)
-[   51.94s |    0 MB]   motor.carregar(...) começando [MotorPygame]
-[   51.94s |    0 MB]   motor.carregar OK; chamando motor.tocar()
-[   51.94s |    0 MB]   motor.tocar OK (tocando)
-[  320.05s |    0 MB] _terminou: faixa acabou sozinha: 'O Tempo'
-[  320.05s |    0 MB]   motor.parar OK; gravando histórico
-[  320.06s |    0 MB]   histórico OK; agendando a próxima
-[  320.06s |    0 MB] pular(automatico=True) posicao=0/66
-[  320.07s |    0 MB] _tocar #3: 'Bem Aventurado' (iniciar=True)
-[  320.24s |    0 MB]   motor.carregar(...) começando [MotorPygame]
-[  320.24s |    0 MB]   motor.carregar OK; chamando motor.tocar()
-[  320.24s |    0 MB]   motor.tocar OK (tocando)
-[  565.86s |    0 MB] _terminou: faixa acabou sozinha: 'Bem Aventurado'
-[  565.87s |    0 MB]   motor.parar OK; gravando histórico
-[  565.88s |    0 MB]   histórico OK; agendando a próxima
-[  565.88s |    0 MB] pular(automatico=True) posicao=1/66
-[  565.88s |    0 MB] _tocar #4: 'Me Faz Viver' (iniciar=True)
-[  566.03s |    0 MB]   motor.carregar(...) começando [MotorPygame]
-[  566.05s |    0 MB]   motor.carregar OK; chamando motor.tocar()
-[  566.05s |    0 MB]   motor.tocar OK (tocando)
+[   20.49s |    0 MB] _tocar #1: 'Bem Aventurado' (iniciar=True)
+[   20.60s |    0 MB]   motor.carregar(...) começando [MotorPygame]
+[   20.70s |    0 MB]   motor.carregar OK; chamando motor.tocar()
+[   20.70s |    0 MB]   motor.tocar OK (tocando)
+[   23.43s |    0 MB] pular(automatico=False) posicao=0/66
+[   23.43s |    0 MB] _tocar #2: 'Autor da Vida' (iniciar=True)
+[   23.56s |    0 MB]   motor.carregar(...) começando [MotorPygame]
+[   23.56s |    0 MB]   motor.carregar OK; chamando motor.tocar()
+[   23.57s |    0 MB]   motor.tocar OK (tocando)
+[  301.50s |    0 MB] _terminou: faixa acabou sozinha: 'Autor da Vida'
+[  301.51s |    0 MB]   motor.parar OK; gravando histórico
+[  301.52s |    0 MB]   histórico OK; agendando a próxima
+[  301.52s |    0 MB] pular(automatico=True) posicao=1/66
+[  301.52s |    0 MB] _tocar #3: 'A Resposta' (iniciar=True)
+[  301.61s |    0 MB]   motor.carregar(...) começando [MotorPygame]
+[  301.64s |    0 MB]   motor.carregar OK; chamando motor.tocar()
+[  301.64s |    0 MB]   motor.tocar OK (tocando)
+[  752.88s |    0 MB] pular(automatico=False) posicao=2/66
+[  752.89s |    0 MB] _tocar #4: 'De Joelhos' (iniciar=True)
+[  753.09s |    0 MB]   motor.carregar(...) começando [MotorPygame]
+[  753.09s |    0 MB]   motor.carregar OK; chamando motor.tocar()
+[  753.09s |    0 MB]   motor.tocar OK (tocando)

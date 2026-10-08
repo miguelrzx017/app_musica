@@ -8,15 +8,17 @@ source.exclude_dirs = .git,.venv,kivy_venv,__pycache__,bin,.buildozer
 source.exclude_patterns = arquivos/musicas/*,trilha.log,erro.log
 version = 1.0.0
 requirements = python3,kivy,pyjnius
+android.gradle_dependencies = androidx.media3:media3-exoplayer:1.11.1,androidx.media3:media3-session:1.11.1
 orientation = portrait
 fullscreen = 0
 icon.filename = arquivos/icones/icon.png
 
-android.api = 35
+android.api = 36
 android.minapi = 24
-android.ndk = 28c
+android.ndk = 29
 android.archs = arm64-v8a, armeabi-v7a
 android.accept_sdk_license = True
+p4a.branch = develop
 android.permissions = android.permission.READ_MEDIA_AUDIO, android.permission.READ_MEDIA_IMAGES, (name=android.permission.READ_EXTERNAL_STORAGE;maxSdkVersion=32), (name=android.permission.WRITE_EXTERNAL_STORAGE;maxSdkVersion=28), android.permission.WAKE_LOCK, android.permission.FOREGROUND_SERVICE, android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK, android.permission.POST_NOTIFICATIONS
 android.add_src = src/android
 android.extra_manifest_application_arguments = src/android/extra_manifest_application_arguments.xml
