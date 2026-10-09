@@ -611,6 +611,24 @@
                     hint_text_color: (.4, .4, .4, 1)
                     on_text_validate: app.cadastrar_usuario() if root.modo_cadastro else app.entrar_usuario()
 
+                BoxLayout:
+                    size_hint_y: None
+                    height: dp(34)
+                    spacing: dp(8)
+                    CheckBox:
+                        id: manter_conectado
+                        size_hint: None, None
+                        size: dp(30), dp(30)
+                        active: True
+                        color: COR_DESTAQUE
+                    Label:
+                        text: "Manter conectado neste aparelho"
+                        halign: "left"
+                        valign: "middle"
+                        text_size: self.size
+                        font_size: "14sp"
+                        color: COR_CINZA
+
                 Label:
                     text: root.mensagem
                     color: (.95, .45, .45, 1) if "incorretos" in root.mensagem or "cadastrado" in root.mensagem or "precisa" in root.mensagem or "Informe" in root.mensagem else COR_CINZA
@@ -881,14 +899,22 @@
         padding: dp(16), dp(10), dp(16), 0
         spacing: dp(8)
 
-        # toque em "Minhas playlists" para voltar ao menu
-        BotaoTexto:
-            text: "Minhas playlists"
+        # Cabeçalho com botão de retorno explícito
+        BoxLayout:
             size_hint_y: None
-            height: dp(40)
-            font_size: "16sp"
-            color: COR_CINZA
-            on_release: app.voltar_tela()
+            height: dp(48)
+            BotaoVoltar:
+                on_release: app.voltar_tela()
+            Label:
+                text: "Minhas playlists"
+                font_size: "16sp"
+                color: COR_CINZA
+                halign: "center"
+                valign: "middle"
+                text_size: self.size
+            Widget:
+                size_hint_x: None
+                width: dp(44)
 
         # Cabeçalho: capa à esquerda, textos e botões à direita
         BoxLayout:
@@ -1061,9 +1087,10 @@
                         size_hint_x: None
                         width: dp(44)
 
+                # O espaço livre fica acima da capa para aproximar título,
+                # artista e barra de reprodução.
                 Widget:
-                    size_hint_y: None
-                    height: dp(14)
+                    size_hint_y: 2
 
                 # Capa quadrada grande (encolhe um pouco em telas baixas)
                 AnchorLayout:
@@ -1078,7 +1105,7 @@
 
                 Widget:
                     size_hint_y: None
-                    height: dp(16)
+                    height: dp(10)
 
                 Texto:
                     text: app.titulo_atual
@@ -1093,7 +1120,8 @@
                     size_hint_y: None
                     height: dp(28)
 
-                Widget:     # espaço flexível: empurra os controles para baixo
+                Widget:
+                    size_hint_y: 1
 
                 BarraProgresso:
                     id: barra

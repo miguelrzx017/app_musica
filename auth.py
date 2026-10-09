@@ -31,6 +31,12 @@ class AuthStore:
             colunas = {linha[1] for linha in con.execute("PRAGMA table_info(usuarios)")}
             if "foto_perfil" not in colunas:
                 con.execute("ALTER TABLE usuarios ADD COLUMN foto_perfil TEXT NOT NULL DEFAULT ''")
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS sessao_ativa (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    nome_chave TEXT NOT NULL
+                )
+            """)
 
     @contextmanager
     def _conectar(self):
@@ -100,3 +106,26 @@ class AuthStore:
                 "UPDATE usuarios SET foto_perfil = ? WHERE nome_chave = ?",
                 (str(caminho or ""), " ".join(str(nome).split()).casefold()),
             )
+
+    def salvar_sessao(self, nome):
+        nome_chave = " ".join(str(nome).split()).casefold()
+        with self._conectar() as con:
+            con.execute(
+                "INSERT INTO sessao_ativa (id, nome_chave) VALUES (1, ?) "
+                "ON CONFLICT(id) DO UPDATE SET nome_chave = excluded.nome_chave",
+                (nome_chave,),
+            )
+
+    def usuario_da_sessao(self):
+        with self._conectar() as con:
+            usuario = con.execute("""
+                SELECT u.nome
+                FROM sessao_ativa s
+                JOIN usuarios u ON u.nome_chave = s.nome_chave
+                WHERE s.id = 1
+            """).fetchone()
+        return usuario["nome"] if usuario else None
+
+    def limpar_sessao(self):
+        with self._conectar() as con:
+            con.execute("DELETE FROM sessao_ativa WHERE id = 1")

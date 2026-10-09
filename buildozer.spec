@@ -21,7 +21,7 @@ android.accept_sdk_license = True
 p4a.branch = develop
 android.permissions = android.permission.READ_MEDIA_AUDIO, android.permission.READ_MEDIA_IMAGES, (name=android.permission.READ_EXTERNAL_STORAGE;maxSdkVersion=32), (name=android.permission.WRITE_EXTERNAL_STORAGE;maxSdkVersion=28), android.permission.WAKE_LOCK, android.permission.FOREGROUND_SERVICE, android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK, android.permission.POST_NOTIFICATIONS
 android.add_src = src/android
-android.extra_manifest_application_arguments = src/android/extra_manifest_application_arguments.xml
+p4a.hook = p4a/hook.py
 
 [buildozer]
 log_level = 2

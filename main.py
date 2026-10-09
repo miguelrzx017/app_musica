@@ -33,7 +33,12 @@ from datetime import datetime, timedelta
 #     pasta privada do app). No Android também sai no logcat:
 #         adb logcat -s python
 # ----------------------------------------------------------------------
-faulthandler.enable(all_threads=True)
+try:
+    faulthandler.enable(all_threads=True)
+except (OSError, RuntimeError, ValueError) as erro:
+    # No Android, stderr do python-for-android pode não expor fileno().
+    # O faulthandler é apenas diagnóstico e não deve impedir o app de abrir.
+    print(f"AVISO: faulthandler indisponível nesta plataforma: {erro}")
 
 _PASTA_LOG = os.environ.get("ANDROID_PRIVATE") or os.path.dirname(os.path.abspath(__file__))
 _ARQ_TRILHA = os.path.join(_PASTA_LOG, "trilha.log")
@@ -446,21 +451,44 @@ class LinhaFila(ButtonBehavior, BoxLayout):
             if not self._arrastando and (dx * dx + dy * dy) ** .5 > dp(12):
                 self._arrastando = True
             if self._arrastando:
+                # Depois que o gesto vira arraste, ele não pode terminar como
+                # um clique do ButtonBehavior (nem depender do estado do toque).
+                touch.ud.pop(self, None)
+                self.state = "normal"
                 return True
         return super().on_touch_move(touch)
 
     def on_touch_up(self, touch):
-        if getattr(self, "_toque_fila", None) is touch and touch.grab_current is self:
+        if getattr(self, "_toque_fila", None) is touch:
             arrastando = self._arrastando
             self._toque_fila = None
-            touch.ungrab(self)
+            self._arrastando = False
             if arrastando:
-                alvos = [w for w in self.parent.children if isinstance(w, LinhaFila)]
+                if touch.grab_current is self:
+                    touch.ungrab(self)
+                touch.ud.pop(self, None)
+                self.state = "normal"
+                alvos = [w for w in self.parent.children if isinstance(w, LinhaFila)] if self.parent else []
                 if alvos:
                     alvo = min(alvos, key=lambda w: abs(w.center_y - touch.y))
                     App.get_running_app().mover_fila(int(self.indice), int(alvo.indice))
                 return True
+            # ButtonBehavior exige que o toque esteja registrado em touch.ud.
+            # Alguns eventos do Android podem chegar sem esse registro; nesse
+            # caso, encerra o gesto sem chamar a rotina que dispara AssertionError.
+            if self in touch.ud and touch.grab_current is self:
+                return super().on_touch_up(touch)
+            if touch.grab_current is self:
+                touch.ungrab(self)
+                self.state = "normal"
+                return True
             return super().on_touch_up(touch)
+        # Protege também os toques fora da alça: o ButtonBehavior só pode
+        # finalizar um toque se ele próprio o registrou no início.
+        if touch.grab_current is self and self not in touch.ud:
+            touch.ungrab(self)
+            self.state = "normal"
+            return True
         return super().on_touch_up(touch)
 
     def on_release(self):
@@ -685,7 +713,7 @@ class TelaEstatisticas(Screen):
         app = App.get_running_app()
         self.atualizar()
         quantidade = (5 if self.aba == "geral" else
-                      min(10, len(self._musicas if self.aba == "musicas" else self._artistas)))
+                      min(7, len(self._musicas if self.aba == "musicas" else self._artistas)))
         relatorio = BoxLayout(
             orientation="vertical", size_hint=(None, None),
             size=(1080, 310 + 125 * max(1, quantidade)),
@@ -723,13 +751,13 @@ class TelaEstatisticas(Screen):
             linhas = [
                 f"{i}. {item['nome']} — {item['reproducoes']} reproduções, "
                 f"{item['musicas_diferentes']} músicas"
-                for i, item in enumerate(self._artistas[:10], 1)
+                for i, item in enumerate(self._artistas[:7], 1)
             ]
         else:
             linhas = [
                 f"{i}. {item['titulo']} — {item['artista']} — "
                 f"{item['reproducoes']} reproduções"
-                for i, item in enumerate(self._musicas[:10], 1)
+                for i, item in enumerate(self._musicas[:7], 1)
             ]
         if not linhas:
             linhas = ["Ainda não há reproduções neste período."]
@@ -1092,7 +1120,7 @@ class MainApp(App):
             trilha(f"falha no cadastro: {erro!r}")
             tela.mensagem = "Não foi possível salvar o cadastro neste aparelho."
             return
-        self._entrar_como(nome)
+        self._entrar_como(nome, manter_conectado=tela.ids.manter_conectado.active)
 
     def entrar_usuario(self):
         tela = self.root.get_screen("acesso")
@@ -1107,11 +1135,15 @@ class MainApp(App):
         if nome is None:
             tela.mensagem = "Nome ou senha incorretos."
             return
-        self._entrar_como(nome)
+        self._entrar_como(nome, manter_conectado=tela.ids.manter_conectado.active)
 
-    def _entrar_como(self, nome):
+    def _entrar_como(self, nome, manter_conectado=False):
         self.usuario_atual = nome
         self.foto_perfil = self.auth_store.obter_foto_perfil(nome)
+        if manter_conectado:
+            self.auth_store.salvar_sessao(nome)
+        else:
+            self.auth_store.limpar_sessao()
         self.pilha.clear()
         tela = self.root.get_screen("acesso")
         tela.ids.senha.text = ""
@@ -1126,6 +1158,7 @@ class MainApp(App):
             self.motor.parar()
         self._parar_servico_audio()
         self.tocando = False
+        self.auth_store.limpar_sessao()
         self.usuario_atual = ""
         self.foto_perfil = ""
         self.pilha.clear()
@@ -1176,6 +1209,11 @@ class MainApp(App):
         self.playlists = listar_playlists()
         self.root.get_screen("menu").montar(self.playlists)
         self.root.get_screen("artistas").montar()
+        usuario = self.auth_store.usuario_da_sessao()
+        if usuario:
+            self.usuario_atual = usuario
+            self.foto_perfil = self.auth_store.obter_foto_perfil(usuario)
+            self.root.current = "menu"
         Clock.schedule_interval(self._tick, 0.25)  # atualiza a barra de progresso
 
     def on_pause(self):
