@@ -36,4 +36,9 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with pytest
       run: |
-        pytest
+        test_file=$(find . -type f \( -name "test_*.py" -o -name "*_test.py" \) -not -path "./.git/*" -print -quit)
+        if [ -n "$test_file" ]; then
+          pytest
+        else
+          echo "Nenhum teste Python encontrado; etapa ignorada."
+        fi
