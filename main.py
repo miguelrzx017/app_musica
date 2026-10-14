@@ -19,6 +19,7 @@ import hashlib
 import json
 import os
 import time
+from functools import lru_cache
 from datetime import datetime, timedelta
 
 # ----------------------------------------------------------------------
@@ -108,7 +109,10 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.filechooser import FileChooserIconView
 from kivy.uix.label import Label
 from kivy.uix.modalview import ModalView
+from kivy.uix.recycleboxlayout import RecycleBoxLayout
+from kivy.uix.recycleview import RecycleView
 from kivy.uix.screenmanager import Screen, ScreenManager, SlideTransition
+from kivy.uix.scrollview import ScrollView
 from kivy.uix.widget import Widget
 from kivy.utils import platform
 
@@ -296,6 +300,12 @@ def linhas_sobre_a_musica(musica):
 # ----------------------------------------------------------------------
 # WIDGETS REUTILIZÁVEIS (o visual deles está no main.kv)
 # ----------------------------------------------------------------------
+@lru_cache(maxsize=24)
+def _textura_compartilhada(caminho):
+    """Reutiliza texturas recentes sem manter todo o catálogo em memória."""
+    return CoreImage(caminho).texture
+
+
 class ImagemArredondada(Widget):
     """
     Imagem com cantos arredondados que PREENCHE o quadrado (corta o excesso,
@@ -333,7 +343,7 @@ class ImagemArredondada(Widget):
             caminho = resource_find(self.source)
             if caminho:
                 try:
-                    self._original = CoreImage(caminho).texture
+                    self._original = _textura_compartilhada(caminho)
                 except Exception as erro:
                     print("imagem: não consegui abrir", caminho, "->", erro)
             if self._original is None and self._tentativas < 6:
@@ -579,6 +589,101 @@ class SeletorFotoPerfil(ModalView):
             self.dismiss()
 
 
+EXT_AUDIO = (".mp3", ".m4a", ".ogg", ".wav", ".flac", ".aac")
+EXT_IMAGEM = (".png", ".jpg", ".jpeg", ".webp")
+NOVO_ARTISTA = "+ Novo artista"
+NOVO_ALBUM = "+ Novo álbum"
+
+
+class LinhaAdicionar(ButtonBehavior, BoxLayout):
+    """Última linha da playlist: abre o formulário de nova música."""
+
+    def on_release(self):
+        App.get_running_app().root.get_screen("playlist").abrir_adicionar()
+
+
+class SeletorArquivo(ModalView):
+    """Escolhe um arquivo (áudio ou imagem) e chama 'ao_escolher(caminho)'."""
+
+    pasta_inicial = StringProperty("")
+    titulo = StringProperty("Escolher arquivo")
+    filtros = ListProperty([])
+
+    def __init__(self, titulo, extensoes, ao_escolher, **kwargs):
+        super().__init__(**kwargs)
+        self.titulo = titulo
+        self.filtros = [f"*{e}" for e in extensoes] + [f"*{e.upper()}" for e in extensoes]
+        self._ao_escolher = ao_escolher
+        self.pasta_inicial = "/storage/emulated/0" if platform == "android" else str(Path.home())
+
+    def escolher(self):
+        selecao = self.ids.arquivos.selection
+        if selecao:
+            self.dismiss()
+            self._ao_escolher(selecao[0])
+
+
+class AdicionarMusicaModal(ModalView):
+    """Formulário: arquivo, título, artista, álbum (existentes ou novos), capa, ano, gêneros."""
+
+    arquivo = StringProperty("")
+    capa = StringProperty("")
+    nome_arquivo = StringProperty("Escolher arquivo de áudio")
+    novo_artista = BooleanProperty(False)
+    novo_album = BooleanProperty(True)
+    artistas = ListProperty([])
+    albuns = ListProperty([NOVO_ALBUM])
+    erro = StringProperty("")
+
+    def __init__(self, playlist_id, **kwargs):
+        super().__init__(**kwargs)
+        self.playlist_id = playlist_id
+        self._ids_artistas = {}
+        for a in db.listar_artistas():
+            self._ids_artistas[a["nome"]] = a["id"]
+        self.artistas = sorted(self._ids_artistas, key=_sem_acento) + [NOVO_ARTISTA]
+        Clock.schedule_once(lambda dt: self._iniciar(), 0)
+
+    def _iniciar(self):
+        self.ids.sp_artista.text = self.artistas[0]
+        self.ao_mudar_artista(self.artistas[0])
+
+    def ao_mudar_artista(self, texto):
+        self.novo_artista = texto == NOVO_ARTISTA
+        nomes = []
+        if not self.novo_artista and texto in self._ids_artistas:
+            nomes = [x["nome"] for x in db.listar_albuns(self._ids_artistas[texto])]
+        self.albuns = nomes + [NOVO_ALBUM]
+        self.ids.sp_album.text = self.albuns[0]
+        self.ao_mudar_album(self.albuns[0])
+
+    def ao_mudar_album(self, texto):
+        self.novo_album = texto == NOVO_ALBUM
+
+    def escolher_audio(self):
+        SeletorArquivo("Escolher música", EXT_AUDIO, self._audio_escolhido).open()
+
+    def _audio_escolhido(self, caminho):
+        self.arquivo = caminho
+        self.nome_arquivo = Path(caminho).name
+        if not self.ids.titulo.text.strip():
+            self.ids.titulo.text = Path(caminho).stem.replace("_", " ").replace("-", " ").strip().title()
+
+    def escolher_capa(self):
+        SeletorArquivo("Escolher capa do álbum", EXT_IMAGEM, lambda c: setattr(self, "capa", c)).open()
+
+    def salvar(self):
+        ids = self.ids
+        artista = ids.nome_artista.text if self.novo_artista else ids.sp_artista.text
+        album = ids.nome_album.text if self.novo_album else ids.sp_album.text
+        self.erro = App.get_running_app().salvar_nova_musica(
+            self.playlist_id, self.arquivo, ids.titulo.text, artista, album,
+            ids.ano.text, self.capa, [g for g in ids.generos.text.split(",")],
+        )
+        if not self.erro:
+            self.dismiss()
+
+
 # ----------------------------------------------------------------------
 # TELAS
 # ----------------------------------------------------------------------
@@ -619,6 +724,10 @@ class LinhaEstatistica(BoxLayout):
     capa = StringProperty("")
 
 
+class BotaoSegmentado(ButtonBehavior, Label):
+    selecionado = BooleanProperty(False)
+
+
 class CartaoResumo(BoxLayout):
     rotulo = StringProperty("")
     valor = StringProperty("")
@@ -628,12 +737,26 @@ class TelaEstatisticas(Screen):
     aba = StringProperty("musicas")
     periodo = StringProperty("semana")
     mensagem = StringProperty("")
+    capturando = BooleanProperty(False)
+    nome_periodo = StringProperty("")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self._auto = None
+        self._assinatura = None
         self._musicas = []
         self._artistas = []
         self._resumo = {}
+
+    def on_enter(self, *args):
+        # Escutas feitas em segundo plano (serviço nativo) aparecem sem reabrir a tela.
+        if self._auto is None:
+            self._auto = Clock.schedule_interval(lambda dt: self.atualizar(), 5)
+
+    def on_leave(self, *args):
+        if self._auto is not None:
+            self._auto.cancel()
+            self._auto = None
 
     def selecionar_aba(self, aba):
         self.aba = aba
@@ -663,152 +786,251 @@ class TelaEstatisticas(Screen):
             return
         usuario = App.get_running_app().usuario_atual
         desde = self._periodo_desde()
+        self.nome_periodo = self._nome_periodo()
         self._musicas = estatisticas_musicas(usuario, desde, limite=50)
         self._artistas = estatisticas_artistas(usuario, desde, limite=50)
         self._resumo = resumo_estatisticas(usuario, desde)
         caixa = self.ids.lista_estatisticas
+        assinatura = (usuario, self.aba, self.periodo,
+                      tuple((x["id"], x["reproducoes"], x["segundos_ouvidos"]) for x in self._musicas),
+                      tuple((x["id"], x["reproducoes"], x["segundos_ouvidos"]) for x in self._artistas),
+                      tuple(sorted(self._resumo.items())))
+        if assinatura == self._assinatura and caixa.children:
+            return  # nada mudou: não refaz a lista (evita piscar e perder a rolagem)
         caixa.clear_widgets()
         self.mensagem = ""
 
         if self.aba == "musicas":
             linhas = self._musicas
-            if not linhas:
-                self.mensagem = "Ainda não há reproduções neste período."
-            for posicao, item in enumerate(linhas, 1):
-                caixa.add_widget(LinhaEstatistica(
-                    numero=posicao,
-                    titulo=item["titulo"],
-                    detalhe=item["artista"],
-                    valor=f"{item['reproducoes']} {'reprodução' if item['reproducoes'] == 1 else 'reproduções'}",
-                    capa=_achar(item.get("capa")),
-                ))
+            dados = [
+                {
+                    "numero": posicao,
+                    "titulo": item["titulo"],
+                    "detalhe": item["artista"],
+                    "valor": f"{item['reproducoes']} {'reprodução' if item['reproducoes'] == 1 else 'reproduções'}",
+                    "capa": _achar(item.get("capa")),
+                }
+                for posicao, item in enumerate(linhas, 1)
+            ]
         elif self.aba == "artistas":
             linhas = self._artistas
-            if not linhas:
-                self.mensagem = "Ainda não há reproduções neste período."
+            dados = []
             for posicao, item in enumerate(linhas, 1):
                 artista = {"id": item["id"], "nome": item["nome"]}
-                caixa.add_widget(LinhaEstatistica(
-                    numero=posicao,
-                    titulo=item["nome"],
-                    detalhe=f"{item['musicas_diferentes']} músicas diferentes",
-                    valor=f"{item['reproducoes']} {'reprodução' if item['reproducoes'] == 1 else 'reproduções'}",
-                    capa=logo_do_artista(artista, _achar),
-                ))
+                dados.append({
+                    "numero": posicao,
+                    "titulo": item["nome"],
+                    "detalhe": f"{item['musicas_diferentes']} músicas diferentes",
+                    "valor": f"{item['reproducoes']} {'reprodução' if item['reproducoes'] == 1 else 'reproduções'}",
+                    "capa": logo_do_artista(artista, _achar),
+                })
         else:
+            dados = None
             resumo = self._resumo
             segundos = int(resumo.get("segundos_ouvidos") or 0)
             tempo = f"{segundos // 3600} h {(segundos % 3600) // 60} min"
             metricas = (
-                ("Reproduções", str(resumo.get("reproducoes", 0))),
+                ("Reproduções (1 min ou mais)", str(resumo.get("reproducoes", 0))),
                 ("Músicas diferentes", str(resumo.get("musicas_diferentes", 0))),
                 ("Artistas ouvidos", str(resumo.get("artistas_diferentes", 0))),
                 ("Tempo ouvindo", tempo),
                 ("Faixas completas", str(resumo.get("completas", 0))),
             )
+            scroll = ScrollView(do_scroll_x=False, bar_width=dp(3))
+            cartoes = BoxLayout(
+                orientation="vertical", size_hint_y=None, spacing=dp(8)
+            )
+            cartoes.bind(minimum_height=cartoes.setter("height"))
             for rotulo, valor in metricas:
-                caixa.add_widget(CartaoResumo(rotulo=rotulo, valor=valor))
+                cartoes.add_widget(CartaoResumo(rotulo=rotulo, valor=valor))
+            scroll.add_widget(cartoes)
+            caixa.add_widget(scroll)
+
+        if dados is not None:
+            if not dados:
+                caixa.add_widget(self._aviso_vazio(usuario, desde))
+            else:
+                rolagem = ScrollView(do_scroll_x=False, bar_width=dp(3))
+                coluna = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(8))
+                coluna.bind(minimum_height=coluna.setter("height"))
+                for dado in dados:
+                    coluna.add_widget(LinhaEstatistica(**dado))
+                rolagem.add_widget(coluna)
+                caixa.add_widget(rolagem)
+        self._assinatura = assinatura
+
+    def _aviso_vazio(self, usuario, desde):
+        total, validas, todos = db.contagem_sessoes(usuario, desde)
+        if total:
+            texto = (f"{total} escuta(s) registrada(s), mas nenhuma chegou a 1 minuto.\n"
+                     "Ouça uma música por pelo menos 1 minuto para ela contar.")
+        elif todos:
+            texto = "Há escutas de outra conta neste período.\nEntre nela para ver os números."
+        else:
+            texto = "Ainda não há reproduções neste período.\nOuça uma música por pelo menos 1 minuto."
+        aviso = Label(text=texto, color=(.55, .55, .55, 1), halign="center", valign="middle")
+        aviso.bind(size=lambda w, s: setattr(w, "text_size", s))
+        return aviso
 
     def gerar_captura(self):
+        if self.capturando:
+            return
+        self.capturando = True
+        try:
+            self._preparar_captura()
+        except Exception as erro:
+            self.capturando = False
+            trilha(f"falha ao preparar captura das estatísticas: {erro!r}")
+            self.mensagem = f"Falha ao preparar a captura ({type(erro).__name__})."
+
+    def _preparar_captura(self):
+        from kivy.graphics import Color, Rectangle
         app = App.get_running_app()
         self.atualizar()
-        quantidade = (5 if self.aba == "geral" else
-                      min(7, len(self._musicas if self.aba == "musicas" else self._artistas)))
-        relatorio = BoxLayout(
-            orientation="vertical", size_hint=(None, None),
-            size=(1080, 310 + 125 * max(1, quantidade)),
-            padding=(54, 48, 54, 48), spacing=18,
-        )
-        with relatorio.canvas.before:
-            from kivy.graphics import Color, Rectangle
-            Color(.07, .07, .07, 1)
-            Rectangle(pos=relatorio.pos, size=relatorio.size)
-
-        titulo = Label(text="My Music Gospel", font_size=52, bold=True,
-                       size_hint_y=None, height=90, halign="left")
-        titulo.text_size = (relatorio.width - 108, None)
-        relatorio.add_widget(titulo)
-        subtitulo = Label(
-            text=f"Estatísticas de {self._nome_periodo()} • "
-                 f"{'Músicas' if self.aba == 'musicas' else 'Artistas' if self.aba == 'artistas' else 'Geral'}",
-            font_size=30, color=(.7, .7, .7, 1), size_hint_y=None, height=64,
-            halign="left",
-        )
-        subtitulo.text_size = (relatorio.width - 108, None)
-        relatorio.add_widget(subtitulo)
+        self.mensagem = "Gerando captura…"
+        resumo = self._resumo
+        segundos = int(resumo.get("segundos_ouvidos") or 0)
+        tempo = f"{segundos // 3600} h {(segundos % 3600) // 60} min"
+        plural = lambda n: "reprodução" if n == 1 else "reproduções"
 
         if self.aba == "geral":
-            resumo = self._resumo
-            segundos = int(resumo.get("segundos_ouvidos") or 0)
+            nome_aba = "Geral"
             linhas = [
-                f"Reproduções: {resumo.get('reproducoes', 0)}",
-                f"Músicas diferentes: {resumo.get('musicas_diferentes', 0)}",
-                f"Artistas ouvidos: {resumo.get('artistas_diferentes', 0)}",
-                f"Tempo ouvindo: {segundos // 3600} h {(segundos % 3600) // 60} min",
-                f"Faixas completas: {resumo.get('completas', 0)}",
+                ("Reproduções (1 min ou mais)", "", str(resumo.get("reproducoes", 0))),
+                ("Músicas diferentes", "", str(resumo.get("musicas_diferentes", 0))),
+                ("Artistas ouvidos", "", str(resumo.get("artistas_diferentes", 0))),
+                ("Tempo ouvindo", "", tempo),
+                ("Faixas completas", "", str(resumo.get("completas", 0))),
             ]
         elif self.aba == "artistas":
-            linhas = [
-                f"{i}. {item['nome']} — {item['reproducoes']} reproduções, "
-                f"{item['musicas_diferentes']} músicas"
-                for i, item in enumerate(self._artistas[:7], 1)
-            ]
+            nome_aba = "Artistas"
+            linhas = [(f"{i}. {nome_na_tela(x['nome'])}", f"{x['musicas_diferentes']} músicas diferentes",
+                       f"{x['reproducoes']} {plural(x['reproducoes'])}")
+                      for i, x in enumerate(self._artistas[:10], 1)]
         else:
-            linhas = [
-                f"{i}. {item['titulo']} — {item['artista']} — "
-                f"{item['reproducoes']} reproduções"
-                for i, item in enumerate(self._musicas[:7], 1)
-            ]
+            nome_aba = "Músicas"
+            linhas = [(f"{i}. {x['titulo']}", x["artista"],
+                       f"{x['reproducoes']} {plural(x['reproducoes'])}")
+                      for i, x in enumerate(self._musicas[:10], 1)]
         if not linhas:
-            linhas = ["Ainda não há reproduções neste período."]
-        for texto in linhas:
-            item_label = Label(
-                text=texto, font_size=28, color=(1, 1, 1, 1),
-                size_hint_y=None, height=110, halign="left", valign="middle",
-            )
-            item_label.text_size = (relatorio.width - 108, None)
-            relatorio.add_widget(item_label)
+            linhas = [("Ainda não há reproduções neste período.", "", "")]
+
+        largura, margem = 1080, 60
+        relatorio = BoxLayout(
+            orientation="vertical", size_hint=(None, None),
+            size=(largura, 420 + 124 * len(linhas)),
+            padding=(margem, 56, margem, 40), spacing=10,
+        )
+        with relatorio.canvas.before:
+            Color(.07, .07, .07, 1)
+            fundo = Rectangle(pos=relatorio.pos, size=relatorio.size)
+        relatorio.bind(pos=lambda w, v: setattr(fundo, "pos", v),
+                       size=lambda w, v: setattr(fundo, "size", v))
+
+        def rotulo(texto, tamanho, altura, cor=(1, 1, 1, 1), alinhar="left", negrito=False):
+            r = Label(text=texto, font_size=tamanho, color=cor, bold=negrito,
+                      halign=alinhar, valign="middle", size_hint_y=None, height=altura,
+                      shorten=True, shorten_from="right")
+            r.bind(size=lambda w, s: setattr(w, "text_size", s))
+            return r
+
+        relatorio.add_widget(rotulo("My Music Gospel", 58, 96, (.91, .12, .12, 1), negrito=True))
+        relatorio.add_widget(rotulo(f"Estatísticas • {nome_aba} • {self._nome_periodo()}",
+                                    30, 56, (.75, .75, .75, 1)))
+        relatorio.add_widget(rotulo(
+            f"{resumo.get('reproducoes', 0)} {plural(resumo.get('reproducoes', 0))} • {tempo} ouvindo",
+            32, 70))
+        for principal, secundario, valor in linhas:
+            linha = BoxLayout(size_hint_y=None, height=114, spacing=12)
+            esquerda = BoxLayout(orientation="vertical")
+            esquerda.add_widget(rotulo(principal, 34, 60, negrito=True))
+            if secundario:
+                esquerda.add_widget(rotulo(secundario, 25, 44, (.6, .6, .6, 1)))
+            linha.add_widget(esquerda)
+            direita = rotulo(valor, 30, 114, (.91, .12, .12, 1), alinhar="right", negrito=True)
+            direita.size_hint_x = None
+            direita.width = 330
+            linha.add_widget(direita)
+            relatorio.add_widget(linha)
+        relatorio.add_widget(Widget())
+        relatorio.add_widget(rotulo(
+            f"{app.usuario_atual} • {datetime.now():%d/%m/%Y %H:%M} • contam reproduções de 1 min ou mais",
+            24, 48, (.5, .5, .5, 1)))
 
         def salvar(_dt):
+            temporario = None
             try:
                 relatorio.do_layout()
+                for filho in relatorio.walk():
+                    if isinstance(filho, Label):
+                        filho.texture_update()
                 pasta_temporaria = Path(app.user_data_dir)
                 pasta_temporaria.mkdir(parents=True, exist_ok=True)
-                nome = f"estatisticas_{datetime.now():%Y%m%d_%H%M%S}.png"
+                nome = f"estatisticas_{datetime.now():%Y%m%d_%H%M%S_%f}.png"
                 temporario = pasta_temporaria / nome
                 relatorio.export_to_png(str(temporario))
                 destino = self._salvar_em_downloads(temporario, nome)
-                temporario.unlink(missing_ok=True)
-                self.mensagem = f"Imagem salva em: {destino}"
+                self.mensagem = (
+                    "Captura salva em Downloads/My Music Gospel."
+                    if platform == "android" else f"Imagem salva em: {destino}"
+                )
             except Exception as erro:
                 trilha(f"falha ao gerar imagem das estatísticas: {erro!r}")
-                self.mensagem = "Não foi possível salvar a imagem neste aparelho."
+                self.mensagem = f"Falha ao salvar a captura ({type(erro).__name__})."
             finally:
+                self.capturando = False
                 relatorio.clear_widgets()
+                if temporario is not None:
+                    try:
+                        temporario.unlink(missing_ok=True)
+                    except OSError as erro:
+                        trilha(f"falha ao limpar captura temporária: {erro!r}")
 
-        Clock.schedule_once(salvar, 0.15)
+        Clock.schedule_once(salvar, 0.3)
 
     def _salvar_em_downloads(self, temporario, nome):
         if platform == "android":
             from jnius import autoclass
             atividade = autoclass("org.kivy.android.PythonActivity").mActivity
             resolver = atividade.getContentResolver()
-            ContentValues = autoclass("android.content.ContentValues")
-            valores = ContentValues()
-            valores.put("DISPLAY_NAME", nome)
-            valores.put("MIME_TYPE", "image/png")
-            if int(autoclass("android.os.Build$VERSION").SDK_INT) >= 29:
+            sdk = int(autoclass("android.os.Build$VERSION").SDK_INT)
+            if sdk >= 29:
+                ContentValues = autoclass("android.content.ContentValues")
                 DownloadsStore = autoclass("android.provider.MediaStore$Downloads")
-                valores.put("RELATIVE_PATH", "Download/My Music Gospel")
+                valores = ContentValues()
+                # MediaStore exige os nomes reais das colunas, em minúsculas.
+                valores.put("_display_name", nome)
+                valores.put("mime_type", "image/png")
+                valores.put("relative_path", "Download/My Music Gospel")
+                valores.put("is_pending", 1)
                 uri = resolver.insert(DownloadsStore.EXTERNAL_CONTENT_URI, valores)
                 if uri is None:
                     raise RuntimeError("O Android não criou o arquivo em Downloads.")
-                saida = resolver.openOutputStream(uri)
                 try:
-                    saida.write(temporario.read_bytes())
-                    saida.flush()
-                finally:
-                    saida.close()
+                    saida = resolver.openOutputStream(uri, "w")
+                    if saida is None:
+                        raise RuntimeError("O Android não abriu o arquivo de destino.")
+                    try:
+                        with temporario.open("rb") as origem:
+                            while True:
+                                bloco = origem.read(64 * 1024)
+                                if not bloco:
+                                    break
+                                saida.write(bloco)
+                        saida.flush()
+                    finally:
+                        saida.close()
+
+                    publicado = ContentValues()
+                    publicado.put("is_pending", 0)
+                    if resolver.update(uri, publicado, None, None) <= 0:
+                        raise RuntimeError("O Android não finalizou o arquivo em Downloads.")
+                except Exception:
+                    try:
+                        resolver.delete(uri, None, None)
+                    except Exception as erro_limpeza:
+                        trilha(f"falha ao remover captura incompleta: {erro_limpeza!r}")
+                    raise
                 return "Downloads/My Music Gospel/" + nome
 
             ambiente = autoclass("android.os.Environment")
@@ -953,10 +1175,12 @@ class TelaPlaylist(Screen):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.playlist_id = None
         self.musicas = []   # todas as músicas da playlist
         self.visiveis = []  # as que aparecem (muda quando você busca)
 
     def carregar(self, playlist):
+        self.playlist_id = playlist["id"]
         self.musicas = musicas_da_playlist(playlist["id"])
         self.nome_playlist = playlist["nome"]
         self.subtitulo = f"Playlist - {playlist['total_musicas']} Músicas"
@@ -970,6 +1194,7 @@ class TelaPlaylist(Screen):
         self.visiveis = lista
         self.ids.lista.data = [
             {
+                "viewclass": "LinhaMusica",
                 "numero": i + 1,
                 "titulo": m["titulo"],
                 "artista": m["artista"],
@@ -978,7 +1203,11 @@ class TelaPlaylist(Screen):
                 "id_musica": m["id"],
             }
             for i, m in enumerate(lista)
-        ]
+        ] + [{"viewclass": "LinhaAdicionar"}]  # botão no fim da playlist
+
+    def abrir_adicionar(self):
+        if self.playlist_id is not None:
+            AdicionarMusicaModal(self.playlist_id).open()
 
     # ---------------- BUSCA ----------------
     def alternar_busca(self):
@@ -1091,7 +1320,12 @@ class MainApp(App):
 
         db.criar_banco()
         # Atualiza o catálogo em instalações que já tinham um banco persistente.
-        db.importar_biblioteca()
+        self._importar_se_mudou()
+        db.limpar_historico_vazio()
+        try:
+            db.preencher_duracoes_vazias(_caminho)
+        except Exception as erro:
+            trilha(f"durações pendentes: {erro!r}")
         self.auth_store = AuthStore(Path(self.user_data_dir) / "contas.db")
 
         gerenciador = ScreenManager(transition=SlideTransition(duration=0.2))
@@ -1106,6 +1340,22 @@ class MainApp(App):
         # O Android avisa quando está ficando sem memória (logo antes de matar apps).
         Window.bind(on_memorywarning=lambda *a: trilha("!!! AVISO DE MEMÓRIA BAIXA do sistema"))
         return gerenciador  # o "root" do app
+
+    def _importar_se_mudou(self):
+        """Só reimporta o biblioteca.py quando ele mudou (abertura bem mais rápida)."""
+        try:
+            marca = hashlib.md5((db.BASE_DIR / "biblioteca.py").read_bytes()).hexdigest()
+            marca += f"-{db.VERSAO_SCHEMA}"
+            arquivo = Path(self.user_data_dir) / "biblioteca.hash"
+            with db.conexao() as con:
+                vazio = con.execute("SELECT COUNT(*) FROM musicas").fetchone()[0] == 0
+            if not vazio and arquivo.exists() and arquivo.read_text() == marca:
+                return
+            db.importar_biblioteca()
+            arquivo.write_text(marca)
+        except Exception as erro:
+            trilha(f"importação condicional falhou: {erro!r}")
+            db.importar_biblioteca()
 
     def cadastrar_usuario(self):
         tela = self.root.get_screen("acesso")
@@ -1183,6 +1433,52 @@ class MainApp(App):
         shutil.copyfile(origem, destino)
         self.auth_store.salvar_foto_perfil(self.usuario_atual, str(destino))
         self.foto_perfil = str(destino)
+
+    def salvar_nova_musica(self, playlist_id, arquivo, titulo, artista, album, ano, capa, generos):
+        """Copia o áudio (e a capa) para a pasta privada do app e cadastra no banco.
+        Devolve "" se deu certo ou a mensagem de erro para o formulário."""
+        origem = Path(arquivo) if arquivo else None
+        if origem is None or not origem.is_file():
+            return "Escolha o arquivo de áudio."
+        if origem.suffix.lower() not in EXT_AUDIO:
+            return "Formato não suportado. Use mp3, m4a, ogg, wav, flac ou aac."
+        if not (titulo.strip() and artista.strip() and album.strip()):
+            return "Preencha título, artista e álbum."
+        pasta = Path(self.user_data_dir) / "minhas_musicas"
+        (pasta / "capas").mkdir(parents=True, exist_ok=True)
+        chave = hashlib.sha1(f"{origem.name}{origem.stat().st_size}".encode()).hexdigest()[:10]
+        destino = pasta / f"{chave}{origem.suffix.lower()}"
+        if destino.exists():
+            return "Esta música já foi adicionada."
+        destino_capa = None
+        try:
+            shutil.copyfile(origem, destino)
+            if capa and Path(capa).is_file() and Path(capa).suffix.lower() in EXT_IMAGEM:
+                destino_capa = pasta / "capas" / f"{chave}{Path(capa).suffix.lower()}"
+                shutil.copyfile(capa, destino_capa)
+            from duracao import duracao_do_arquivo
+            db.adicionar_musica(titulo, artista, album, str(destino), ano,
+                                str(destino_capa) if destino_capa else "", generos, playlist_id,
+                                duracao=duracao_do_arquivo(destino))
+        except ValueError as erro:
+            destino.unlink(missing_ok=True)
+            if destino_capa:
+                destino_capa.unlink(missing_ok=True)
+            return str(erro)
+        except Exception as erro:
+            trilha(f"falha ao adicionar música: {erro!r}")
+            destino.unlink(missing_ok=True)
+            if destino_capa:
+                destino_capa.unlink(missing_ok=True)
+            return "Não foi possível salvar a música."
+        self.playlists = listar_playlists()
+        self.root.get_screen("menu").montar(self.playlists)
+        self.root.get_screen("artistas").montar()
+        self._sincronizar_fila_android()
+        for p in self.playlists:
+            if p["id"] == playlist_id:
+                self.root.get_screen("playlist").carregar(p)
+        return ""
 
     def abrir_estatisticas(self):
         tela = self.root.get_screen("estatisticas")
@@ -1303,6 +1599,7 @@ class MainApp(App):
         self.aleatorio = aleatorio
         self.origem = origem
         self._tocar(fila.musica_atual(self.fila_atual))
+        self.ir("player", "up")
 
     def tocar_da_fila(self, indice):
         """Tocou numa música de 'A Seguir': ela vira a atual."""
@@ -1310,6 +1607,7 @@ class MainApp(App):
             return
         self.fila_atual["posicao"] = indice
         self._tocar(fila.musica_atual(self.fila_atual))
+        self.ir("player", "up")
 
     def alternar_aleatorio(self):
         f = self.fila_atual
@@ -1384,7 +1682,7 @@ class MainApp(App):
         return json.dumps({
             "tracks": faixas,
             "index": indice_nativo,
-            "user": self._usuario_da_faixa or self.usuario_atual,
+            "user": self.usuario_atual,
             "database": str(db.BANCO),
         }, ensure_ascii=False)
 
@@ -1398,6 +1696,17 @@ class MainApp(App):
             sincronizar(self._payload_fila_android())
         except Exception as erro:
             trilha(f"não foi possível atualizar a fila do Media3: {erro!r}")
+
+    def _aprender_duracao(self, segundos):
+        """Faixa sem duração no banco: guarda a que o player descobriu ao tocar."""
+        musica = self.musica_tocando
+        if not musica or musica.get("duracao_seg") or not segundos or segundos < 1:
+            return
+        try:
+            musica["duracao_seg"] = int(round(segundos))
+            db.atualizar_duracao_musica(musica["id"], segundos)
+        except Exception as erro:
+            trilha(f"não gravei a duração: {erro!r}")
 
     def _sincronizar_estado_android(self):
         if platform != "android":
@@ -1421,6 +1730,8 @@ class MainApp(App):
         self.tocando = estado.get("tocando", False)
         self.posicao = estado.get("posicao", 0.0)
         self.duracao = estado.get("duracao", 0.0) or self.duracao
+        if estado.get("duracao", 0.0) > 0 and self.id_atual == self.musica_tocando.get("id") if self.musica_tocando else False:
+            self._aprender_duracao(estado["duracao"])
 
     def _sincronizar_faixa_android(self, musica):
         """Atualiza a interface quando a sessão avança fora da Activity."""
@@ -1609,6 +1920,7 @@ class MainApp(App):
         self.posicao = self.motor.posicao()
         if not self.duracao:
             self.duracao = self.motor.duracao()
+            self._aprender_duracao(self.duracao)
         segundos = int(max(0, self.posicao))
         if segundos >= 1 and (
                 self._registro_atual is None

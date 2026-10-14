@@ -6,12 +6,16 @@ source.dir = .
 source.include_exts = py,kv,png,jpg,jpeg,ttf,svg,db,xml
 source.exclude_dirs = .git,.venv,kivy_venv,__pycache__,bin,.buildozer
 source.exclude_patterns = arquivos/musicas/*,trilha.log,erro.log
-version = 1.0.0
+version = 1.0.9
 requirements = python3,kivy,pyjnius
 android.gradle_dependencies = androidx.media3:media3-exoplayer:1.11.1,androidx.media3:media3-session:1.11.1
+android.release_artifact = aab
+android.debug_artifact = apk
 orientation = portrait
 fullscreen = 0
 icon.filename = arquivos/icones/icon.png
+presplash.filename = arquivos/icones/presplash.png
+android.presplash_color = #121212
 
 android.api = 36
 android.minapi = 24

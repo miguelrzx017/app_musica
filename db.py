@@ -32,6 +32,8 @@ PASTA_DADOS = BASE_DIR / "dados"
 BANCO = PASTA_DADOS / "musica.db"
 
 VERSAO_SCHEMA = 2
+# Uma sessão só conta como visualização depois de um minuto ouvido.
+LIMIAR_VISUALIZACAO_SEGUNDOS = 60
 
 
 ESQUEMA = """
@@ -110,6 +112,7 @@ ESQUEMA = """
     CREATE INDEX IF NOT EXISTS idx_historico_musica  ON historico(musica_id);
     CREATE INDEX IF NOT EXISTS idx_historico_data    ON historico(reproduzida_em);
     CREATE INDEX IF NOT EXISTS idx_historico_usuario ON historico(usuario);
+    CREATE INDEX IF NOT EXISTS idx_historico_usuario_data ON historico(usuario, reproduzida_em);
 """
 
 
@@ -139,6 +142,7 @@ def conexao(caminho=None):
 
     con = sqlite3.connect(caminho)
     con.row_factory = sqlite3.Row
+    con.execute("PRAGMA busy_timeout = 5000")
     con.execute("PRAGMA foreign_keys = ON")  # vale só para esta conexão
     con.create_function("sem_acento", 1, _sem_acento, deterministic=True)
 
@@ -160,21 +164,70 @@ def _dicts(linhas):
 # Criação do banco
 # ----------------------------------------------------------------------
 
+def _colunas_tabela(con, tabela):
+    """Devolve os nomes das colunas de uma tabela existente."""
+    return {
+        linha["name"]
+        for linha in con.execute(f'PRAGMA table_info("{tabela}")')
+    }
+
+
+def _migracoes_banco_sem_versao(con):
+    """Prepara migrações aditivas para bancos antigos, sem descartar dados."""
+    tabelas = {
+        linha[0]
+        for linha in con.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' "
+            "AND name NOT LIKE 'sqlite_%'"
+        )
+    }
+    if not tabelas:
+        return []
+    if "musicas" not in tabelas:
+        raise RuntimeError(
+            "O banco local não tem uma tabela de músicas reconhecida. "
+            "Os dados foram preservados; não apague o arquivo musica.db."
+        )
+
+    # Estas colunas são usadas pelas consultas atuais. Só adicionamos as duas
+    # colunas opcionais que versões anteriores deste app deixavam de gravar.
+    obrigatorias = {
+        "artistas": {"id", "nome"},
+        "albuns": {"id", "nome", "artista_id"},
+        "musicas": {"id", "titulo", "artista_id", "album_id", "arquivo"},
+        "historico": {
+            "id", "musica_id", "reproduzida_em", "segundos_ouvidos", "completa"
+        },
+    }
+    for tabela, colunas_necessarias in obrigatorias.items():
+        if tabela not in tabelas:
+            continue  # ESQUEMA recria tabelas auxiliares que ainda não existam.
+        faltantes = colunas_necessarias - _colunas_tabela(con, tabela)
+        if faltantes:
+            lista = ", ".join(sorted(faltantes))
+            raise RuntimeError(
+                f"O banco local tem um formato antigo não reconhecido "
+                f"({tabela}: {lista}). Os dados foram preservados."
+            )
+
+    migracoes = []
+    colunas_musicas = _colunas_tabela(con, "musicas")
+    if "duracao_seg" not in colunas_musicas:
+        migracoes.append("ALTER TABLE musicas ADD COLUMN duracao_seg INTEGER;")
+
+    if "historico" in tabelas and "usuario" not in _colunas_tabela(con, "historico"):
+        migracoes.append(
+            "ALTER TABLE historico ADD COLUMN usuario TEXT NOT NULL DEFAULT '';"
+        )
+    return migracoes
+
+
 def criar_banco():
     with conexao() as con:
+        # SQLite wal permite consultas enquanto o serviço grava o progresso.
+        con.execute("PRAGMA journal_mode = WAL")
+        con.execute("PRAGMA synchronous = NORMAL")
         versao = con.execute("PRAGMA user_version").fetchone()[0]
-
-        if versao == 0:
-            ja_existe = con.execute(
-                "SELECT 1 FROM sqlite_master "
-                "WHERE type = 'table' AND name = 'musicas'"
-            ).fetchone()
-            if ja_existe:
-                raise RuntimeError(
-                    f"{BANCO} foi criado por uma versão antiga do db.py "
-                    "(sem user_version). Se o histórico estiver vazio, apague "
-                    "o arquivo e rode de novo; ele é recriado do biblioteca.py."
-                )
 
         if versao > VERSAO_SCHEMA:
             raise RuntimeError(
@@ -182,13 +235,24 @@ def criar_banco():
                 f"até a {VERSAO_SCHEMA}."
             )
 
+        migracoes = []
+        if versao == 0:
+            migracoes = _migracoes_banco_sem_versao(con)
         if versao == 1:
-            con.execute(
-                "ALTER TABLE historico ADD COLUMN usuario TEXT NOT NULL DEFAULT ''"
-            )
+            if ("historico" in {
+                    linha[0] for linha in con.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    )
+            } and "usuario" not in _colunas_tabela(con, "historico")):
+                migracoes.append(
+                    "ALTER TABLE historico ADD COLUMN usuario TEXT NOT NULL DEFAULT '';"
+                )
 
-        con.executescript(ESQUEMA)
-        con.execute(f"PRAGMA user_version = {VERSAO_SCHEMA}")
+        # Faz as alterações e a atualização da versão na mesma transação. Se
+        # uma tabela for incompatível, o SQLite reverte a migração sem apagá-la.
+        sql = "BEGIN IMMEDIATE;\n" + "\n".join(migracoes) + "\n" + ESQUEMA
+        sql += f"\nPRAGMA user_version = {VERSAO_SCHEMA};\nCOMMIT;"
+        con.executescript(sql)
 
 
 # ----------------------------------------------------------------------
@@ -477,9 +541,9 @@ def listar_generos():
 def registrar_reproducao(musica_id, segundos_ouvidos, completa=False, quando=None,
                          usuario=""):
     """
-    Grava uma reprodução no histórico e devolve o id dela.
+    Grava o progresso de uma sessão e devolve o id dela.
     'quando' é o início da reprodução (datetime); padrão: agora.
-    Decida no player quando contar (sugestão: >= 30 s ou >= 50% da faixa).
+    As consultas estatísticas contam a sessão a partir de 60 s ouvidos.
     """
     quando = (quando or datetime.now()).isoformat(timespec="seconds")
 
@@ -503,6 +567,105 @@ def atualizar_reproducao(registro_id, segundos_ouvidos, completa=False):
         )
 
 
+def atualizar_duracao_musica(musica_id, segundos):
+    """Grava a duração de uma faixa (usado ao descobrir a duração tocando)."""
+    with conexao() as con:
+        con.execute("UPDATE musicas SET duracao_seg = ? WHERE id = ?",
+                    (int(segundos), int(musica_id)))
+
+
+def preencher_duracoes_vazias(resolver):
+    """Calcula a duração das faixas sem duração. 'resolver' converte o caminho do banco em arquivo."""
+    from duracao import duracao_do_arquivo
+    with conexao() as con:
+        for linha in con.execute(
+                "SELECT id, arquivo FROM musicas WHERE duracao_seg IS NULL OR duracao_seg <= 0").fetchall():
+            segundos = duracao_do_arquivo(resolver(linha["arquivo"]))
+            if segundos:
+                con.execute("UPDATE musicas SET duracao_seg = ? WHERE id = ?",
+                            (segundos, linha["id"]))
+
+
+def contagem_sessoes(usuario, desde=None):
+    """(sessões do usuário, sessões com 1 min ou mais, sessões de todos) - para diagnóstico."""
+    filtro, params = ("AND reproduzida_em >= ?", [desde]) if desde else ("", [])
+    with conexao() as con:
+        total, validas = con.execute(
+            f"SELECT COUNT(*), COALESCE(SUM(segundos_ouvidos >= {LIMIAR_VISUALIZACAO_SEGUNDOS}), 0) "
+            f"FROM historico WHERE usuario = ? {filtro}", [str(usuario)] + params).fetchone()
+        todos = con.execute(
+            f"SELECT COUNT(*) FROM historico WHERE 1=1 {filtro}", params).fetchone()[0]
+    return total, int(validas), todos
+
+
+def limpar_historico_vazio():
+    """Remove sessões sem nenhum segundo ouvido (ruído deixado por pulos rápidos)."""
+    with conexao() as con:
+        con.execute("DELETE FROM historico WHERE segundos_ouvidos <= 0")
+
+
+def adicionar_musica(titulo, artista, album, arquivo, ano=None, capa="",
+                     generos=(), playlist_id=None, duracao=None):
+    """
+    Cadastra uma música enviada pelo usuário. Reaproveita artista/álbum que já
+    existem (ignorando acento e maiúscula) e cria os que não existem.
+    'arquivo' e 'capa' são caminhos absolutos. Devolve o id da música.
+    """
+    titulo, artista, album = (str(x or "").strip() for x in (titulo, artista, album))
+    if not (titulo and artista and album and arquivo):
+        raise ValueError("Preencha título, artista, álbum e escolha o arquivo.")
+    try:
+        ano = int(ano) if str(ano or "").strip() else None
+    except ValueError:
+        raise ValueError("O ano precisa ser um número (ex.: 2024).")
+
+    with conexao() as con:
+        if con.execute("SELECT 1 FROM musicas WHERE arquivo = ?", (arquivo,)).fetchone():
+            raise ValueError("Esta música já está na biblioteca.")
+
+        linha = con.execute(
+            "SELECT id FROM artistas WHERE sem_acento(nome) = sem_acento(?)", (artista,)
+        ).fetchone()
+        artista_id = linha[0] if linha else _id_artista(con, artista)
+
+        linha = con.execute(
+            "SELECT id FROM albuns WHERE artista_id = ? AND sem_acento(nome) = sem_acento(?)",
+            (artista_id, album),
+        ).fetchone()
+        if linha:
+            album_id = linha[0]
+            if capa:
+                con.execute("UPDATE albuns SET capa = ? WHERE id = ?", (capa, album_id))
+            if ano:
+                con.execute("UPDATE albuns SET ano = ? WHERE id = ?", (ano, album_id))
+        else:
+            album_id = con.execute(
+                "INSERT INTO albuns (nome, artista_id, ano, capa) VALUES (?, ?, ?, ?)",
+                (album, artista_id, ano, capa or None),
+            ).lastrowid
+
+        musica_id = con.execute(
+            "INSERT INTO musicas (titulo, artista_id, album_id, arquivo, duracao_seg) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (titulo, artista_id, album_id, arquivo, duracao),
+        ).lastrowid
+
+        for nome in generos:
+            nome = str(nome).strip().lower()
+            if nome:
+                con.execute(
+                    "INSERT OR IGNORE INTO musica_genero (musica_id, genero_id) VALUES (?, ?)",
+                    (musica_id, _id_genero(con, nome)),
+                )
+        if playlist_id is not None:
+            con.execute("""
+                INSERT OR IGNORE INTO playlist_musicas (playlist_id, musica_id, posicao)
+                SELECT ?, ?, COALESCE(MAX(posicao), 0) + 1
+                FROM playlist_musicas WHERE playlist_id = ?
+            """, (playlist_id, musica_id, playlist_id))
+        return musica_id
+
+
 def historico_recente(limite=50):
     with conexao() as con:
         return _dicts(con.execute("""
@@ -517,7 +680,7 @@ def historico_recente(limite=50):
 
 
 def estatisticas_musicas(usuario, desde=None, limite=100):
-    """Faixas mais ouvidas pelo usuário, com execuções, tempo e capa."""
+    """Faixas visualizadas (ao menos 60 s), com tempo total e capa."""
     where = "h.usuario = ?"
     params = [str(usuario)]
     if desde:
@@ -527,16 +690,23 @@ def estatisticas_musicas(usuario, desde=None, limite=100):
     with conexao() as con:
         return _dicts(con.execute(f"""
             SELECT m.id, m.titulo, a.nome AS artista, al.nome AS album,
-                   al.capa, COUNT(h.id) AS reproducoes,
+                   al.capa,
+                   COUNT(CASE WHEN h.segundos_ouvidos >= {LIMIAR_VISUALIZACAO_SEGUNDOS}
+                              THEN h.id END) AS reproducoes,
                    SUM(h.segundos_ouvidos) AS segundos_ouvidos,
-                   SUM(h.completa) AS completas,
-                   MAX(h.reproduzida_em) AS ultima_reproducao
+                   SUM(CASE WHEN h.segundos_ouvidos >= {LIMIAR_VISUALIZACAO_SEGUNDOS}
+                            THEN h.completa ELSE 0 END) AS completas,
+                   MAX(CASE
+                       WHEN h.segundos_ouvidos >= {LIMIAR_VISUALIZACAO_SEGUNDOS}
+                       THEN h.reproduzida_em END) AS ultima_reproducao
             FROM historico h
             JOIN musicas m ON m.id = h.musica_id
             JOIN artistas a ON a.id = m.artista_id
             JOIN albuns al ON al.id = m.album_id
             WHERE {where}
             GROUP BY m.id
+            HAVING COUNT(CASE WHEN h.segundos_ouvidos >= {LIMIAR_VISUALIZACAO_SEGUNDOS}
+                              THEN h.id END) > 0
             ORDER BY reproducoes DESC, segundos_ouvidos DESC,
                      sem_acento(m.titulo)
             LIMIT ?
@@ -544,7 +714,7 @@ def estatisticas_musicas(usuario, desde=None, limite=100):
 
 
 def estatisticas_artistas(usuario, desde=None, limite=100):
-    """Artistas mais ouvidos pelo usuário, incluindo faixas distintas."""
+    """Artistas de faixas visualizadas, incluindo faixas distintas."""
     where = "h.usuario = ?"
     params = [str(usuario)]
     if desde:
@@ -553,15 +723,22 @@ def estatisticas_artistas(usuario, desde=None, limite=100):
     params.append(int(limite))
     with conexao() as con:
         return _dicts(con.execute(f"""
-            SELECT a.id, a.nome, COUNT(h.id) AS reproducoes,
-                   COUNT(DISTINCT m.id) AS musicas_diferentes,
+            SELECT a.id, a.nome,
+                   COUNT(CASE WHEN h.segundos_ouvidos >= {LIMIAR_VISUALIZACAO_SEGUNDOS}
+                              THEN h.id END) AS reproducoes,
+                   COUNT(DISTINCT CASE
+                       WHEN h.segundos_ouvidos >= {LIMIAR_VISUALIZACAO_SEGUNDOS}
+                       THEN m.id END) AS musicas_diferentes,
                    SUM(h.segundos_ouvidos) AS segundos_ouvidos,
-                   SUM(h.completa) AS completas
+                   SUM(CASE WHEN h.segundos_ouvidos >= {LIMIAR_VISUALIZACAO_SEGUNDOS}
+                            THEN h.completa ELSE 0 END) AS completas
             FROM historico h
             JOIN musicas m ON m.id = h.musica_id
             JOIN artistas a ON a.id = m.artista_id
             WHERE {where}
             GROUP BY a.id
+            HAVING COUNT(CASE WHEN h.segundos_ouvidos >= {LIMIAR_VISUALIZACAO_SEGUNDOS}
+                              THEN h.id END) > 0
             ORDER BY reproducoes DESC, segundos_ouvidos DESC,
                      sem_acento(a.nome)
             LIMIT ?
@@ -569,7 +746,7 @@ def estatisticas_artistas(usuario, desde=None, limite=100):
 
 
 def resumo_estatisticas(usuario, desde=None):
-    """Resumo geral do histórico de escuta do usuário."""
+    """Resumo: conta visualizações com 60 s e soma todo o tempo ouvido."""
     where = "h.usuario = ?"
     params = [str(usuario)]
     if desde:
@@ -577,11 +754,19 @@ def resumo_estatisticas(usuario, desde=None):
         params.append(desde)
     with conexao() as con:
         linha = con.execute(f"""
-            SELECT COUNT(h.id) AS reproducoes,
-                   COUNT(DISTINCT h.musica_id) AS musicas_diferentes,
-                   COUNT(DISTINCT m.artista_id) AS artistas_diferentes,
+            SELECT COUNT(CASE
+                       WHEN h.segundos_ouvidos >= {LIMIAR_VISUALIZACAO_SEGUNDOS}
+                       THEN h.id END) AS reproducoes,
+                   COUNT(DISTINCT CASE
+                       WHEN h.segundos_ouvidos >= {LIMIAR_VISUALIZACAO_SEGUNDOS}
+                       THEN h.musica_id END) AS musicas_diferentes,
+                   COUNT(DISTINCT CASE
+                       WHEN h.segundos_ouvidos >= {LIMIAR_VISUALIZACAO_SEGUNDOS}
+                       THEN m.artista_id END) AS artistas_diferentes,
                    COALESCE(SUM(h.segundos_ouvidos), 0) AS segundos_ouvidos,
-                   COALESCE(SUM(h.completa), 0) AS completas
+                   COALESCE(SUM(CASE
+                       WHEN h.segundos_ouvidos >= {LIMIAR_VISUALIZACAO_SEGUNDOS}
+                       THEN h.completa ELSE 0 END), 0) AS completas
             FROM historico h
             JOIN musicas m ON m.id = h.musica_id
             WHERE {where}

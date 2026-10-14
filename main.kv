@@ -30,6 +30,19 @@
     size_hint: None, None
     size: dp(44), dp(44)
 
+<BotaoSegmentado>:
+    color: COR_BRANCO
+    halign: "center"
+    valign: "middle"
+    text_size: self.size
+    canvas.before:
+        Color:
+            rgba: (.28, .28, .28, 1) if self.selecionado else (0, 0, 0, 0)
+        RoundedRectangle:
+            pos: self.x + dp(1), self.y + dp(1)
+            size: self.width - dp(2), self.height - dp(2)
+            radius: [dp(17)]
+
 <IconePerfil@ButtonBehavior+Widget>:
     size_hint: None, None
     size: dp(46), dp(46)
@@ -96,8 +109,8 @@
 <LinhaEstatistica>:
     size_hint_y: None
     height: dp(78)
-    padding: dp(8), dp(7)
-    spacing: dp(12)
+    padding: dp(6), dp(7)
+    spacing: dp(8)
     canvas.before:
         Color:
             rgba: COR_CARTAO
@@ -108,12 +121,12 @@
     Label:
         text: str(root.numero)
         size_hint_x: None
-        width: dp(24)
+        width: dp(22)
         color: COR_CINZA
         font_size: "16sp"
     ImagemArredondada:
         size_hint: None, None
-        size: dp(58), dp(58)
+        size: dp(50), dp(50)
         pos_hint: {"center_y": .5}
         raio: dp(9)
         source: root.capa
@@ -139,7 +152,7 @@
     Label:
         text: root.valor
         size_hint_x: None
-        width: dp(82)
+        width: min(dp(82), max(dp(68), root.width * .25))
         color: COR_CINZA
         font_size: "12sp"
         halign: "right"
@@ -305,6 +318,15 @@
             pos: self.x + dp(8), self.y + dp(4)
             size: self.width - dp(16), self.height - dp(8)
             radius: [dp(14)]
+    # canvas.after TEM que vir antes dos widgets filhos no .kv (o parser recusa depois);
+    # na tela ele continua sendo desenhado por cima dos filhos.
+    canvas.after:
+        Color:
+            rgba: COR_DESTAQUE
+        RoundedRectangle:
+            pos: self.x + dp(16), self.y + dp(6)
+            size: (max(0, (self.width - dp(32)) * min(1, max(0, app.posicao / app.duracao))) if app.duracao else 0, dp(2))
+            radius: [dp(1)]
     ImagemArredondada:
         size_hint: None, None
         size: dp(44), dp(44)
@@ -328,6 +350,7 @@
         size: dp(36), dp(36)
         pos_hint: {"center_y": .5}
         on_release: app.pausar_ou_retomar()
+
 
 # ======================================================================
 # LINHAS DE LISTA
@@ -395,11 +418,11 @@
 # -------- playlist no menu --------
 <CartaoPlaylist>:
     size_hint_y: None
-    height: dp(124)
-    spacing: dp(14)
+    height: min(dp(124), max(dp(88), root.width * .36))
+    spacing: min(dp(14), root.width * .045)
     ImagemArredondada:
         size_hint: None, None
-        size: dp(124), dp(124)
+        size: min(dp(124), max(dp(88), root.width * .36)), min(dp(124), max(dp(88), root.width * .36))
         raio: dp(20)
         source: root.capa
     BoxLayout:
@@ -407,7 +430,7 @@
         Texto:
             text: root.nome
             bold: True
-            font_size: "30sp"
+            font_size: min(sp(30), max(sp(17), self.width * .16))
             valign: "bottom"
             shorten: False
             max_lines: 2
@@ -674,7 +697,7 @@
 
         BoxLayout:
             size_hint_y: None
-            height: dp(58)
+            height: max(dp(58), sp(40))
             spacing: dp(8)
             IconeChevron:
                 pos_hint: {"center_y": .5}
@@ -692,6 +715,7 @@
             size_hint_y: None
             height: dp(50)
             padding: dp(4)
+            spacing: dp(3)
             canvas.before:
                 Color:
                     rgba: COR_CARTAO
@@ -699,29 +723,27 @@
                     pos: self.pos
                     size: self.size
                     radius: [dp(22)]
-            Button:
+            BotaoSegmentado:
                 text: "Músicas"
                 font_size: "14sp"
-                background_normal: ""
-                background_color: (.28, .28, .28, 1) if root.aba == "musicas" else (0, 0, 0, 0)
+                selecionado: root.aba == "musicas"
                 on_release: root.selecionar_aba("musicas")
-            Button:
+            BotaoSegmentado:
                 text: "Artistas"
                 font_size: "14sp"
-                background_normal: ""
-                background_color: (.28, .28, .28, 1) if root.aba == "artistas" else (0, 0, 0, 0)
+                selecionado: root.aba == "artistas"
                 on_release: root.selecionar_aba("artistas")
-            Button:
+            BotaoSegmentado:
                 text: "Geral"
                 font_size: "14sp"
-                background_normal: ""
-                background_color: (.28, .28, .28, 1) if root.aba == "geral" else (0, 0, 0, 0)
+                selecionado: root.aba == "geral"
                 on_release: root.selecionar_aba("geral")
 
         BoxLayout:
             size_hint_y: None
             height: dp(48)
             padding: dp(4)
+            spacing: dp(3)
             canvas.before:
                 Color:
                     rgba: COR_CARTAO
@@ -729,23 +751,20 @@
                     pos: self.pos
                     size: self.size
                     radius: [dp(22)]
-            Button:
+            BotaoSegmentado:
                 text: "Semana"
                 font_size: "13sp"
-                background_normal: ""
-                background_color: (.28, .28, .28, 1) if root.periodo == "semana" else (0, 0, 0, 0)
+                selecionado: root.periodo == "semana"
                 on_release: root.selecionar_periodo("semana")
-            Button:
+            BotaoSegmentado:
                 text: "Mês"
                 font_size: "13sp"
-                background_normal: ""
-                background_color: (.28, .28, .28, 1) if root.periodo == "mes" else (0, 0, 0, 0)
+                selecionado: root.periodo == "mes"
                 on_release: root.selecionar_periodo("mes")
-            Button:
+            BotaoSegmentado:
                 text: "Este ano"
                 font_size: "13sp"
-                background_normal: ""
-                background_color: (.28, .28, .28, 1) if root.periodo == "ano" else (0, 0, 0, 0)
+                selecionado: root.periodo == "ano"
                 on_release: root.selecionar_periodo("ano")
 
         Label:
@@ -755,21 +774,16 @@
             size_hint_y: None
             height: dp(34)
         Label:
-            text: root._nome_periodo()
+            text: root.nome_periodo
             color: COR_CINZA
             font_size: "13sp"
             size_hint_y: None
             height: dp(22)
 
-        ScrollView:
-            do_scroll_x: False
-            bar_width: dp(3)
-            BoxLayout:
-                id: lista_estatisticas
-                orientation: "vertical"
-                size_hint_y: None
-                height: self.minimum_height
-                spacing: dp(8)
+        BoxLayout:
+            id: lista_estatisticas
+            orientation: "vertical"
+            spacing: dp(8)
 
         Label:
             text: root.mensagem
@@ -779,9 +793,10 @@
             size_hint_y: None
             height: dp(28)
         Button:
-            text: "Salvar captura em Downloads"
+            text: "Gerando captura…" if root.capturando else "Salvar captura em Downloads"
             size_hint_y: None
             height: dp(48)
+            disabled: root.capturando
             background_normal: ""
             background_color: (.28, .28, .28, 1)
             on_release: root.gerar_captura()
@@ -804,11 +819,15 @@
 
                 BoxLayout:
                     size_hint_y: None
-                    height: dp(84)
+                    height: max(dp(84), sp(58))
                     Label:
                         text: "My Music"
                         bold: True
-                        font_size: "50sp"
+                        font_size: min(sp(50), self.width * .17)
+                        halign: "left"
+                        valign: "middle"
+                        text_size: self.size
+                        shorten: True
                     IconePerfil:
                         on_release: app.abrir_perfil()
 
@@ -893,6 +912,193 @@
 # ======================================================================
 # TELA 2: PLAYLIST
 # ======================================================================
+<LinhaAdicionar>:
+    size_hint_y: None
+    height: dp(72)
+    padding: dp(4), dp(8)
+    spacing: dp(12)
+    Widget:
+        size_hint: None, None
+        size: dp(46), dp(46)
+        pos_hint: {"center_y": .5}
+        canvas:
+            Color:
+                rgba: COR_CARTAO
+            RoundedRectangle:
+                pos: self.pos
+                size: self.size
+                radius: [dp(23)]
+            Color:
+                rgba: COR_DESTAQUE
+            Rectangle:
+                pos: self.center_x - dp(10), self.center_y - dp(1.5)
+                size: dp(20), dp(3)
+            Rectangle:
+                pos: self.center_x - dp(1.5), self.center_y - dp(10)
+                size: dp(3), dp(20)
+    Texto:
+        text: "Adicionar música"
+        font_size: "17sp"
+        color: COR_DESTAQUE
+
+<SeletorArquivo>:
+    size_hint: .96, .9
+    auto_dismiss: True
+    title: root.titulo
+    BoxLayout:
+        orientation: "vertical"
+        spacing: dp(8)
+        padding: dp(10)
+        canvas.before:
+            Color:
+                rgba: (.12, .12, .12, 1)
+            RoundedRectangle:
+                pos: self.pos
+                size: self.size
+                radius: [dp(18)]
+        FileChooserIconView:
+            id: arquivos
+            path: root.pasta_inicial
+            filters: root.filtros
+            show_hidden: False
+        BoxLayout:
+            size_hint_y: None
+            height: dp(46)
+            spacing: dp(8)
+            Button:
+                text: "Cancelar"
+                on_release: root.dismiss()
+            Button:
+                text: "Selecionar"
+                on_release: root.escolher()
+
+<CampoForm@TextInput>:
+    size_hint_y: None
+    height: dp(44)
+    multiline: False
+    background_normal: ""
+    background_active: ""
+    background_color: COR_CARTAO
+    foreground_color: 1, 1, 1, 1
+    hint_text_color: COR_CINZA
+    cursor_color: 1, 1, 1, 1
+    padding: dp(14), dp(12)
+
+<SeletorForm@Spinner>:
+    size_hint_y: None
+    height: dp(44)
+    background_normal: ""
+    background_color: COR_CARTAO
+    color: 1, 1, 1, 1
+
+<AdicionarMusicaModal>:
+    size_hint: .94, .92
+    auto_dismiss: False
+    background: ""
+    background_color: 0, 0, 0, 0
+    BoxLayout:
+        orientation: "vertical"
+        padding: dp(16)
+        spacing: dp(8)
+        canvas.before:
+            Color:
+                rgba: (.12, .12, .12, 1)
+            RoundedRectangle:
+                pos: self.pos
+                size: self.size
+                radius: [dp(22)]
+        Label:
+            text: "Adicionar música"
+            font_name: "DMSansMedium"
+            font_size: "20sp"
+            size_hint_y: None
+            height: dp(36)
+        ScrollView:
+            do_scroll_x: False
+            bar_width: dp(3)
+            BoxLayout:
+                orientation: "vertical"
+                size_hint_y: None
+                height: self.minimum_height
+                spacing: dp(8)
+                Button:
+                    text: root.nome_arquivo
+                    size_hint_y: None
+                    height: dp(48)
+                    shorten: True
+                    shorten_from: "left"
+                    text_size: self.width - dp(16), None
+                    halign: "center"
+                    background_normal: ""
+                    background_color: (.28, .28, .28, 1)
+                    on_release: root.escolher_audio()
+                CampoForm:
+                    id: titulo
+                    hint_text: "Nome da música"
+                Subtitulo:
+                    text: "Artista"
+                SeletorForm:
+                    id: sp_artista
+                    values: root.artistas
+                    on_text: root.ao_mudar_artista(self.text)
+                CampoForm:
+                    id: nome_artista
+                    hint_text: "Nome do novo artista"
+                    height: dp(44) if root.novo_artista else 0
+                    opacity: 1 if root.novo_artista else 0
+                    disabled: not root.novo_artista
+                Subtitulo:
+                    text: "Álbum"
+                SeletorForm:
+                    id: sp_album
+                    values: root.albuns
+                    on_text: root.ao_mudar_album(self.text)
+                CampoForm:
+                    id: nome_album
+                    hint_text: "Nome do novo álbum"
+                    height: dp(44) if root.novo_album else 0
+                    opacity: 1 if root.novo_album else 0
+                    disabled: not root.novo_album
+                CampoForm:
+                    id: ano
+                    hint_text: "Ano (opcional)"
+                    input_filter: "int"
+                CampoForm:
+                    id: generos
+                    hint_text: "Gêneros separados por vírgula (opcional)"
+                BoxLayout:
+                    size_hint_y: None
+                    height: dp(64)
+                    spacing: dp(12)
+                    ImagemArredondada:
+                        size_hint: None, None
+                        size: dp(64), dp(64)
+                        raio: dp(10)
+                        source: root.capa
+                    Button:
+                        text: "Trocar capa do álbum" if root.capa else "Escolher capa do álbum (opcional)"
+                        background_normal: ""
+                        background_color: (.28, .28, .28, 1)
+                        on_release: root.escolher_capa()
+        Label:
+            text: root.erro
+            color: COR_DESTAQUE
+            font_size: "13sp"
+            size_hint_y: None
+            height: dp(26) if root.erro else 0
+        BoxLayout:
+            size_hint_y: None
+            height: dp(48)
+            spacing: dp(8)
+            Button:
+                text: "Cancelar"
+                on_release: root.dismiss()
+            Button:
+                text: "Salvar"
+                background_normal: ""
+                background_color: COR_DESTAQUE
+                on_release: root.salvar()
+
 <TelaPlaylist>:
     BoxLayout:
         orientation: "vertical"
@@ -919,11 +1125,11 @@
         # Cabeçalho: capa à esquerda, textos e botões à direita
         BoxLayout:
             size_hint_y: None
-            height: dp(136)
-            spacing: dp(14)
+            height: min(dp(136), max(dp(108), root.width * .38))
+            spacing: min(dp(14), root.width * .04)
             ImagemArredondada:
                 size_hint: None, None
-                size: dp(124), dp(124)
+                size: min(dp(124), max(dp(88), root.width * .34)), min(dp(124), max(dp(88), root.width * .34))
                 raio: dp(20)
                 source: root.capa_playlist
             BoxLayout:
@@ -931,7 +1137,7 @@
                 Texto:
                     text: root.nome_playlist
                     bold: True
-                    font_size: "26sp"
+                    font_size: min(sp(26), max(sp(16), self.width * .14))
                     valign: "bottom"
                     shorten: False
                     max_lines: 2
@@ -989,6 +1195,7 @@
         # "recicla" ao rolar - essencial para listas grandes no celular.
         RecycleView:
             id: lista
+            key_viewclass: "viewclass"
             viewclass: "LinhaMusica"
             RecycleBoxLayout:
                 orientation: "vertical"
@@ -1096,7 +1303,7 @@
                 AnchorLayout:
                     id: area_capa
                     size_hint_y: None
-                    height: min(self.width, root.height * .46)
+                    height: min(self.width, max(dp(92), root.height - dp(356)))
                     ImagemArredondada:
                         size_hint: None, None
                         size: min(area_capa.width, area_capa.height), min(area_capa.width, area_capa.height)
@@ -1602,7 +1809,7 @@
                         padding_x: dp(6)
                     GridLayout:
                         id: grade_albuns
-                        cols: 3
+                        cols: 2 if self.width < dp(320) else 3
                         spacing: dp(22), dp(16)
                         size_hint_y: None
                         height: self.minimum_height

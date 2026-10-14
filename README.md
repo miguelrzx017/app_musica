@@ -1,19 +1,24 @@
-# My Music Gospel
+﻿# My Music Gospel
 
-## Gerar o APK Android
+## Gerar o APK no Google Colab
 
-O Buildozer precisa de Linux. No Windows, use uma distribuição Ubuntu no WSL 2 e instale nela as ferramentas do Buildozer e do Android. Na pasta do projeto, execute:
+Use o notebook `Buildozer_Google_Colab.ipynb` que você já tem no Colab e envie o arquivo atualizado `Projeto_My_Music_Gospel_Colab_Atualizado.zip` quando a primeira célula pedir um ZIP. O nome foi mantido para que o notebook existente continue compatível. Veja [INSTRUCOES_COLAB.md](INSTRUCOES_COLAB.md).
 
-```bash
-buildozer android debug
-```
+O notebook gera um APK de depuração para instalação direta e teste. Para publicar uma atualização na Play Store, compile a versão de lançamento em `.aab` e assine com a chave de upload do aplicativo publicado.
 
-O APK de depuração será salvo em `bin/`. O primeiro build baixa SDK, NDK e dependências e pode demorar. Para instalar em um celular conectado por USB com depuração autorizada, use `buildozer android debug deploy run`.
+## Compatibilidade e conteúdo
 
-No Android, o áudio e a fila são controlados por um `MediaSessionService` com Media3. Isso mantém a reprodução quando a Activity do Kivy fica suspensa e publica os controles da faixa na notificação. O serviço também continua registrando o histórico de escuta usado pelas estatísticas.
+- Android 7.0 (API 24) ou superior.
+- Arquiteturas ARM de 32 e 64 bits (`armeabi-v7a` e `arm64-v8a`).
+- O projeto usa Android API 36 como alvo.
+- A versão do aplicativo nesta atualização é `1.0.5`; o identificador continua `org.miguelribeiro.mymusicgospel`.
+- A versão 1.0.5 desativa o renderizador HWUI do Android apenas na activity Kivy como mitigação para o mutex destruído registrado no Android 16. A interface do Kivy continua usando a superfície SDL/OpenGL.
+- As imagens mantêm os arquivos atuais sem nova compressão ou redimensionamento nesta atualização.
+- O APK e o ZIP não incluem MP3. No aparelho, coloque as músicas em `Armazenamento interno/Music/AppMusica/arquivos/musicas/`.
+- Esta atualização migra bancos locais antigos reconhecidos sem apagar o histórico.
 
-Para compilar no Google Colab, use `Buildozer_Google_Colab.ipynb` junto com `Projeto_My_Music_Gospel_Colab.zip`. O pacote contém o código Java do serviço e as dependências Media3; os MP3 continuam separados.
+Se o app ainda fechar ao abrir e você não tiver ADB, siga [as instruções para gerar um relatório no próprio Android](INSTRUCOES_DIAGNOSTICO_ANDROID.md).
 
-## Músicas no celular
+## Música e estatísticas
 
-Os MP3 ficam fora do APK e do pacote de compilação. O catálogo do app espera as músicas em `Armazenamento interno/Music/AppMusica/arquivos/musicas/`, com os nomes cadastrados no catálogo. Para esta faixa, use `depois_da_guerra.mp3`. Se baixar um ZIP de áudio, extraia-o sem criar uma pasta extra no caminho.
+No Android, o Media3 mantém a reprodução em segundo plano. As estatísticas contam uma reprodução depois de pelo menos 60 segundos efetivamente ouvidos. Arquivos de música e banco local ficam no dispositivo.
