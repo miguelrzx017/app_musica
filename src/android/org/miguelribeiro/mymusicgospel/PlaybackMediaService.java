@@ -1,12 +1,20 @@
 package org.miguelribeiro.mymusicgospel;
 
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.app.Service;
+import android.content.pm.ServiceInfo;
+import android.service.notification.StatusBarNotification;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.database.sqlite.SQLiteDatabase;
 import android.net.Uri;
 import android.os.Build;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -62,6 +70,11 @@ public final class PlaybackMediaService extends MediaSessionService {
     private static final long STATE_IDLE_MS = 1000L;      // pausado: poupa bateria
     private static final long POSITION_SAVE_MS = 5000L;
 
+    // Mesmos valores padrão do Media3: a notificação "ponte" é substituída pela real.
+    private static final String CHANNEL_ID = "default_channel_id";
+    private static final int NOTIFICATION_ID = 1001;
+    private static final int MAX_RETRIES_PER_TRACK = 2;
+
     private static volatile PlaybackMediaService instance;
     private static volatile String snapshotMediaId = "";
     private static volatile long snapshotPositionMs;
@@ -86,6 +99,11 @@ public final class PlaybackMediaService extends MediaSessionService {
     private String lastQueueJson = "";
     private String restoreId = "";
     private int consecutiveErrors;
+    private int retriesForCurrent;
+    private String retryMediaId = "";
+    private boolean bridgeForeground;   // foreground iniciado por nós (ponte)
+    private boolean mediaForeground;    // foreground iniciado pelo Media3
+    private PendingIntent sessionActivityIntent;
     private long lastPositionSaveAt;
     // Banco de dados fora da thread principal: evita ANR/fechamento em segundo plano
     // quando o Python segura o banco ao trocar de faixa.
@@ -128,11 +146,17 @@ public final class PlaybackMediaService extends MediaSessionService {
                 context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String json = preferences.getString(PREF_QUEUE, "");
         if (!json.isEmpty()) {
-            context.startService(new Intent(context, PlaybackMediaService.class)
+            Intent restore = new Intent(context, PlaybackMediaService.class)
                     .setAction(ACTION_START)
                     .putExtra(EXTRA_QUEUE, json)
                     .putExtra(EXTRA_POSITION, preferences.getLong(PREF_POSITION, 0L))
-                    .putExtra(EXTRA_RESTORE, preferences.getString(PREF_MEDIA_ID, "")));
+                    .putExtra(EXTRA_RESTORE, preferences.getString(PREF_MEDIA_ID, ""));
+            try {
+                if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(restore);
+                else context.startService(restore);
+            } catch (Throwable error) {
+                Log.w(TAG, "Não foi possível reiniciar o serviço de reprodução", error);
+            }
         }
     }
 
@@ -164,6 +188,16 @@ public final class PlaybackMediaService extends MediaSessionService {
         // a sessão quando o player realmente começa a tocar e publica a notificação.
         // Evita iniciar o prazo de startForegroundService enquanto o Media3 ainda
         // prepara o arquivo ou quando a fila não consegue iniciar.
+        if (ACTION_START.equals(action) && Build.VERSION.SDK_INT >= 26) {
+            // A Activity está visível agora, então a promoção a foreground é permitida.
+            // O serviço chama startForeground() imediatamente em onStartCommand().
+            try {
+                context.startForegroundService(intent);
+                return;
+            } catch (Throwable error) {
+                Log.w(TAG, "startForegroundService falhou; usando startService", error);
+            }
+        }
         context.startService(intent);
     }
 
@@ -207,8 +241,21 @@ public final class PlaybackMediaService extends MediaSessionService {
             @Override public void onIsPlayingChanged(boolean isPlaying) {
                 sampleListenedTime();
                 if (!isPlaying) { saveProgress(false, true); savePosition(); }
-                if (isPlaying) consecutiveErrors = 0;
+                if (isPlaying) { consecutiveErrors = 0; retriesForCurrent = 0; }
+                Log.i(TAG, "isPlaying=" + isPlaying);
+                scheduleForegroundCheck();
                 updateSnapshot();
+            }
+
+            @Override public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
+                // Registra QUEM pausou (USER_REQUEST=1, AUDIO_FOCUS_LOSS=2,
+                // AUDIO_BECOMING_NOISY=3, REMOTE=4, END_OF_MEDIA_ITEM=5, SUPPRESSED_TOO_LONG=6).
+                Log.i(TAG, "playWhenReady=" + playWhenReady + " reason=" + reason);
+                scheduleForegroundCheck();
+            }
+
+            @Override public void onPlaybackSuppressionReasonChanged(int reason) {
+                Log.i(TAG, "playbackSuppressionReason=" + reason);
             }
 
             @Override public void onPlaybackStateChanged(int playbackState) {
@@ -228,6 +275,23 @@ public final class PlaybackMediaService extends MediaSessionService {
             @Override public void onPlayerError(PlaybackException error) {
                 Log.e(TAG, "Falha ao reproduzir faixa", error);
                 try {
+                    // 1) Tenta recuperar a MESMA faixa (erro passageiro de áudio/IO em
+                    //    segundo plano) antes de pausar ou pular.
+                    MediaItem atual = player.getCurrentMediaItem();
+                    String atualId = atual == null ? "" : atual.mediaId;
+                    if (!atualId.equals(retryMediaId)) { retryMediaId = atualId; retriesForCurrent = 0; }
+                    if (atual != null && retriesForCurrent < MAX_RETRIES_PER_TRACK
+                            && atual.localConfiguration != null
+                            && new File(atual.localConfiguration.uri.getPath()).isFile()) {
+                        retriesForCurrent++;
+                        long pos = Math.max(0L, player.getCurrentPosition());
+                        player.seekTo(player.getCurrentMediaItemIndex(), pos);
+                        player.prepare();
+                        player.play();
+                        updateSnapshot();
+                        return;
+                    }
+                    // 2) Não deu: pula para a próxima.
                     consecutiveErrors++;
                     if (consecutiveErrors >= Math.max(1, player.getMediaItemCount())) {
                         player.pause();          // todas falharam: não entra em loop
@@ -245,7 +309,7 @@ public final class PlaybackMediaService extends MediaSessionService {
         Intent sessionIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
         if (sessionIntent != null) {
             sessionIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            PendingIntent sessionActivity = PendingIntent.getActivity(
+            PendingIntent sessionActivity = sessionActivityIntent = PendingIntent.getActivity(
                     this,
                     0,
                     sessionIntent,
@@ -254,6 +318,16 @@ public final class PlaybackMediaService extends MediaSessionService {
             sessionBuilder.setSessionActivity(sessionActivity);
         }
         mediaSession = sessionBuilder.build();
+        // CORREÇÃO DO "PAUSA SOZINHO EM SEGUNDO PLANO": nenhum MediaController se conecta
+        // a este serviço (o Python fala por métodos estáticos), então onGetSession() nunca
+        // era chamado, a sessão nunca era adicionada, nenhuma notificação de mídia era
+        // criada e o serviço nunca virava "foreground". Em segundo plano o Android o
+        // encerrava depois de alguns segundos e o player era liberado.
+        try {
+            addSession(mediaSession);
+        } catch (Throwable error) {
+            Log.w(TAG, "addSession falhou (sessão já adicionada?)", error);
+        }
         mainHandler.post(stateUpdater);
     }
 
@@ -262,6 +336,12 @@ public final class PlaybackMediaService extends MediaSessionService {
     }
 
     @Override public int onStartCommand(@Nullable Intent intent, int flags, int startId) {
+        // Se veio de startForegroundService(), o Android exige startForeground() em
+        // poucos segundos. Fazemos já, sem esperar o Media3 montar a notificação.
+        if (intent != null && ACTION_START.equals(intent.getAction())) {
+            ensureForeground();
+            mainHandler.postDelayed(this::scheduleForegroundCheck, 4000L);
+        }
         if (intent != null) {
             String action = intent.getAction();
             String json = intent.getStringExtra(EXTRA_QUEUE);
@@ -294,7 +374,7 @@ public final class PlaybackMediaService extends MediaSessionService {
                 } else if (ACTION_SYNC.equals(action)) {
                     applyQueue(json, positionMs, snapshotPlaying, true);
                 } else if (ACTION_PLAY.equals(action)) {
-                    if (player.getMediaItemCount() > 0) player.play();
+                    if (player.getMediaItemCount() > 0) { ensureForeground(); player.play(); }
                 } else if (ACTION_PAUSE.equals(action)) {
                     saveProgress(false, true);
                     player.pause();
@@ -452,7 +532,10 @@ public final class PlaybackMediaService extends MediaSessionService {
         try {
             long musicId = Long.parseLong(mediaId);
             database = SQLiteDatabase.openDatabase(dbPath, null, SQLiteDatabase.OPEN_READWRITE);
-            database.execSQL("PRAGMA busy_timeout = 3000");
+            // PRAGMA devolve linha: execSQL() lança exceção em vários Androids e abortava a gravação.
+            try (android.database.Cursor c = database.rawQuery("PRAGMA busy_timeout = 5000", null)) {
+                c.moveToFirst();
+            } catch (Throwable ignored) { }
             ContentValues values = new ContentValues();
             values.put("segundos_ouvidos", seconds);
             values.put("completa", complete ? 1 : 0);
@@ -498,15 +581,103 @@ public final class PlaybackMediaService extends MediaSessionService {
         snapshotPlaying = player.isPlaying();
     }
 
+    /**
+     * Foreground "ponte": garante prioridade de serviço em primeiro plano desde o
+     * primeiro instante, sem depender do Media3 montar a notificação a tempo.
+     * Reaproveita a notificação do Media3 (mesmo id) se ela já existir.
+     */
+    private void ensureForeground() {
+        try {
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            Notification notification = null;
+            if (nm != null && Build.VERSION.SDK_INT >= 23) {
+                for (StatusBarNotification active : nm.getActiveNotifications()) {
+                    if (active.getId() == NOTIFICATION_ID) { notification = active.getNotification(); break; }
+                }
+            }
+            if (notification == null) notification = buildBridgeNotification(nm);
+            if (Build.VERSION.SDK_INT >= 29) {
+                startForeground(NOTIFICATION_ID, notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+            } else {
+                startForeground(NOTIFICATION_ID, notification);
+            }
+            bridgeForeground = true;
+        } catch (Throwable error) {
+            Log.w(TAG, "Não foi possível promover o serviço a foreground", error);
+        }
+    }
+
+    private Notification buildBridgeNotification(@Nullable NotificationManager nm) {
+        Notification.Builder builder;
+        if (Build.VERSION.SDK_INT >= 26) {
+            if (nm != null && nm.getNotificationChannel(CHANNEL_ID) == null) {
+                NotificationChannel channel = new NotificationChannel(
+                        CHANNEL_ID, "Reprodução", NotificationManager.IMPORTANCE_LOW);
+                channel.setShowBadge(false);
+                nm.createNotificationChannel(channel);
+            }
+            builder = new Notification.Builder(this, CHANNEL_ID);
+        } else {
+            builder = new Notification.Builder(this);
+        }
+        builder.setSmallIcon(android.R.drawable.ic_media_play)
+                .setContentTitle("My Music Gospel")
+                .setContentText("Reproduzindo música")
+                .setOngoing(true)
+                .setOnlyAlertOnce(true);
+        if (sessionActivityIntent != null) builder.setContentIntent(sessionActivityIntent);
+        return builder.build();
+    }
+
+    /** Se a ponte ficou ativa sem música tocando, solta o foreground (sem notificação fantasma). */
+    private void scheduleForegroundCheck() {
+        mainHandler.removeCallbacks(foregroundCheck);
+        mainHandler.postDelayed(foregroundCheck, 1500L);
+    }
+
+    private final Runnable foregroundCheck = new Runnable() {
+        @Override public void run() {
+            if (player == null || !bridgeForeground || mediaForeground) return;
+            boolean ativo = player.getMediaItemCount() > 0 && player.getPlayWhenReady();
+            if (ativo) return;
+            try {
+                stopForeground(player.getMediaItemCount() == 0
+                        ? Service.STOP_FOREGROUND_REMOVE : Service.STOP_FOREGROUND_DETACH);
+            } catch (Throwable ignored) { }
+            bridgeForeground = false;
+        }
+    };
+
     /** Nunca deixa a falha de promoção a primeiro plano derrubar o app em segundo plano. */
     @Override public void onUpdateNotification(MediaSession session, boolean startInForegroundRequired) {
+        Log.i(TAG, "onUpdateNotification foreground=" + startInForegroundRequired);
         try {
             super.onUpdateNotification(session, startInForegroundRequired);
+            mediaForeground = startInForegroundRequired;
+            if (startInForegroundRequired) bridgeForeground = false; // Media3 assumiu
         } catch (Throwable error) {
-            Log.w(TAG, "Notificação de mídia adiada", error);
+            Log.w(TAG, "Notificação de mídia adiada; mantendo foreground da ponte", error);
+            mediaForeground = false;
+            if (startInForegroundRequired) ensureForeground();
             mainHandler.postDelayed(() -> {
-                try { super.onUpdateNotification(session, false); } catch (Throwable ignored) { }
+                try { super.onUpdateNotification(session, startInForegroundRequired); }
+                catch (Throwable ignored) { }
             }, 1000L);
+        }
+    }
+
+    /** Pede UMA vez ao Android para não restringir o app em segundo plano (economia de bateria). */
+    public static void requestIgnoreBatteryOptimizations(Context context) {
+        try {
+            PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+            if (pm == null || pm.isIgnoringBatteryOptimizations(context.getPackageName())) return;
+            Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                    .setData(Uri.parse("package:" + context.getPackageName()))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(intent);
+        } catch (Throwable error) {
+            Log.w(TAG, "Pedido de isenção de bateria indisponível", error);
         }
     }
 
@@ -519,6 +690,7 @@ public final class PlaybackMediaService extends MediaSessionService {
 
     @Override public void onDestroy() {
         mainHandler.removeCallbacks(stateUpdater);
+        mainHandler.removeCallbacks(foregroundCheck);
         saveProgress(false, true);
         if (mediaSession != null) {
             mediaSession.release();

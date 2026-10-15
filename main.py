@@ -830,7 +830,7 @@ class TelaEstatisticas(Screen):
             segundos = int(resumo.get("segundos_ouvidos") or 0)
             tempo = f"{segundos // 3600} h {(segundos % 3600) // 60} min"
             metricas = (
-                ("Reproduções (1 min ou mais)", str(resumo.get("reproducoes", 0))),
+                ("Reproduções (30 s ou mais)", str(resumo.get("reproducoes", 0))),
                 ("Músicas diferentes", str(resumo.get("musicas_diferentes", 0))),
                 ("Artistas ouvidos", str(resumo.get("artistas_diferentes", 0))),
                 ("Tempo ouvindo", tempo),
@@ -862,12 +862,12 @@ class TelaEstatisticas(Screen):
     def _aviso_vazio(self, usuario, desde):
         total, validas, todos = db.contagem_sessoes(usuario, desde)
         if total:
-            texto = (f"{total} escuta(s) registrada(s), mas nenhuma chegou a 1 minuto.\n"
-                     "Ouça uma música por pelo menos 1 minuto para ela contar.")
+            texto = (f"{total} escuta(s) registrada(s), mas nenhuma chegou a 30 segundos.\n"
+                     "Ouça uma música por pelo menos 30 segundos para ela contar.")
         elif todos:
             texto = "Há escutas de outra conta neste período.\nEntre nela para ver os números."
         else:
-            texto = "Ainda não há reproduções neste período.\nOuça uma música por pelo menos 1 minuto."
+            texto = "Ainda não há reproduções neste período.\nOuça uma música por pelo menos 30 segundos."
         aviso = Label(text=texto, color=(.55, .55, .55, 1), halign="center", valign="middle")
         aviso.bind(size=lambda w, s: setattr(w, "text_size", s))
         return aviso
@@ -896,7 +896,7 @@ class TelaEstatisticas(Screen):
         if self.aba == "geral":
             nome_aba = "Geral"
             linhas = [
-                ("Reproduções (1 min ou mais)", "", str(resumo.get("reproducoes", 0))),
+                ("Reproduções (30 s ou mais)", "", str(resumo.get("reproducoes", 0))),
                 ("Músicas diferentes", "", str(resumo.get("musicas_diferentes", 0))),
                 ("Artistas ouvidos", "", str(resumo.get("artistas_diferentes", 0))),
                 ("Tempo ouvindo", "", tempo),
@@ -954,7 +954,7 @@ class TelaEstatisticas(Screen):
             relatorio.add_widget(linha)
         relatorio.add_widget(Widget())
         relatorio.add_widget(rotulo(
-            f"{app.usuario_atual} • {datetime.now():%d/%m/%Y %H:%M} • contam reproduções de 1 min ou mais",
+            f"{app.usuario_atual} • {datetime.now():%d/%m/%Y %H:%M} • contam reproduções de 30 s ou mais",
             24, 48, (.5, .5, .5, 1)))
 
         def salvar(_dt):
@@ -995,34 +995,33 @@ class TelaEstatisticas(Screen):
             resolver = atividade.getContentResolver()
             sdk = int(autoclass("android.os.Build$VERSION").SDK_INT)
             if sdk >= 29:
+                # Padrão Android 10+: MediaStore (scoped storage), sem permissão de armazenamento.
                 ContentValues = autoclass("android.content.ContentValues")
                 DownloadsStore = autoclass("android.provider.MediaStore$Downloads")
+                Inteiro = autoclass("java.lang.Integer")  # put() é sobrecarregado: tipo explícito
                 valores = ContentValues()
-                # MediaStore exige os nomes reais das colunas, em minúsculas.
                 valores.put("_display_name", nome)
                 valores.put("mime_type", "image/png")
                 valores.put("relative_path", "Download/My Music Gospel")
-                valores.put("is_pending", 1)
+                valores.put("is_pending", Inteiro(1))
                 uri = resolver.insert(DownloadsStore.EXTERNAL_CONTENT_URI, valores)
                 if uri is None:
                     raise RuntimeError("O Android não criou o arquivo em Downloads.")
                 try:
-                    saida = resolver.openOutputStream(uri, "w")
+                    saida = resolver.openOutputStream(uri)
                     if saida is None:
                         raise RuntimeError("O Android não abriu o arquivo de destino.")
+                    entrada = autoclass("java.io.FileInputStream")(str(temporario))
                     try:
-                        with temporario.open("rb") as origem:
-                            while True:
-                                bloco = origem.read(64 * 1024)
-                                if not bloco:
-                                    break
-                                saida.write(bloco)
+                        # Cópia feita 100% no lado Java (evita converter bytes via pyjnius).
+                        autoclass("android.os.FileUtils").copy(entrada, saida)
                         saida.flush()
                     finally:
+                        entrada.close()
                         saida.close()
 
                     publicado = ContentValues()
-                    publicado.put("is_pending", 0)
+                    publicado.put("is_pending", Inteiro(0))
                     if resolver.update(uri, publicado, None, None) <= 0:
                         raise RuntimeError("O Android não finalizou o arquivo em Downloads.")
                 except Exception:

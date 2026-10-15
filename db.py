@@ -32,8 +32,8 @@ PASTA_DADOS = BASE_DIR / "dados"
 BANCO = PASTA_DADOS / "musica.db"
 
 VERSAO_SCHEMA = 2
-# Uma sessão só conta como visualização depois de um minuto ouvido.
-LIMIAR_VISUALIZACAO_SEGUNDOS = 60
+# Padrão do mercado: visualização = pelo menos 30 segundos ouvidos.
+LIMIAR_VISUALIZACAO_SEGUNDOS = 30
 
 
 ESQUEMA = """
@@ -543,7 +543,7 @@ def registrar_reproducao(musica_id, segundos_ouvidos, completa=False, quando=Non
     """
     Grava o progresso de uma sessão e devolve o id dela.
     'quando' é o início da reprodução (datetime); padrão: agora.
-    As consultas estatísticas contam a sessão a partir de 60 s ouvidos.
+    As consultas estatísticas contam a sessão a partir de 30 s ouvidos.
     """
     quando = (quando or datetime.now()).isoformat(timespec="seconds")
 
@@ -587,7 +587,7 @@ def preencher_duracoes_vazias(resolver):
 
 
 def contagem_sessoes(usuario, desde=None):
-    """(sessões do usuário, sessões com 1 min ou mais, sessões de todos) - para diagnóstico."""
+    """(sessões do usuário, sessões com 30 s ou mais, sessões de todos) - para diagnóstico."""
     filtro, params = ("AND reproduzida_em >= ?", [desde]) if desde else ("", [])
     with conexao() as con:
         total, validas = con.execute(
@@ -680,7 +680,7 @@ def historico_recente(limite=50):
 
 
 def estatisticas_musicas(usuario, desde=None, limite=100):
-    """Faixas visualizadas (ao menos 60 s), com tempo total e capa."""
+    """Faixas visualizadas (ao menos 30 s), com tempo total e capa."""
     where = "h.usuario = ?"
     params = [str(usuario)]
     if desde:
@@ -746,7 +746,7 @@ def estatisticas_artistas(usuario, desde=None, limite=100):
 
 
 def resumo_estatisticas(usuario, desde=None):
-    """Resumo: conta visualizações com 60 s e soma todo o tempo ouvido."""
+    """Resumo: conta visualizações com 30 s e soma todo o tempo ouvido."""
     where = "h.usuario = ?"
     params = [str(usuario)]
     if desde:
