@@ -1,5 +1,6 @@
 #:import dp kivy.metrics.dp
 #:import sp kivy.metrics.sp
+#:import Animation kivy.animation.Animation
 
 # main.kv - só o VISUAL. Regras: "<NomeDaClasse>:" estiliza a classe do main.py.
 # Indentação = hierarquia. 'root' = widget da regra atual; 'self' = o widget onde
@@ -7,11 +8,14 @@
 # se adaptam à densidade da tela. Tamanhos de fonte seguem o mockup.
 
 # ---- CORES (R, G, B, opacidade) - mude aqui e vale para o app todo ----
-#:set COR_CINZA (0.55, 0.55, 0.55, 1)
+#:set COR_CINZA (0.62, 0.64, 0.76, 1)
 #:set COR_BRANCO (1, 1, 1, 1)
-#:set COR_CARTAO (0.16, 0.16, 0.16, 1)
+#:set COR_CARTAO (1, 1, 1, 0.08)
 #:set COR_DESTAQUE (0.91, 0.12, 0.12, 1)
-#:set COR_LINHA (0.3, 0.3, 0.3, 1)
+#:set COR_LINHA (1, 1, 1, 0.09)
+# Estilo "vidro": branco translúcido (deixa a cor da capa aparecer por baixo) + brilho na borda
+#:set COR_VIDRO (1, 1, 1, 0.09)
+#:set COR_BORDA_VIDRO (1, 1, 1, 0.16)
 
 # ======================================================================
 # FONTE (DM Sans) - registrada no main.py
@@ -23,10 +27,98 @@
     font_name: "DMSans"
 
 # ======================================================================
+# VIDRO ("liquid glass"): preenchimento translúcido + brilho em degradê (usa a
+# textura app.gradiente: transparente embaixo, opaca em cima) + borda fina,
+# reflexo na borda de cima e uma luz na cor da capa na borda de baixo.
+# ======================================================================
+<CartaoVidro>:
+    canvas.before:
+        Color:
+            rgba: 1, 1, 1, .06
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [self.raio]
+        Color:
+            rgba: 1, 1, 1, .13
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [self.raio]
+            texture: app.gradiente
+        Color:
+            rgba: 1, 1, 1, .2
+        Line:
+            rounded_rectangle: self.x, self.y, self.width, self.height, self.raio
+            width: dp(1)
+        Color:
+            rgba: 1, 1, 1, .45
+        Line:
+            points: self.x + self.raio, self.top - dp(.5), self.right - self.raio, self.top - dp(.5)
+            width: dp(1)
+        Color:
+            rgba: app.cor_capa[0], app.cor_capa[1], app.cor_capa[2], .6
+        Line:
+            points: self.x + self.raio, self.y + dp(.5), self.right - self.raio, self.y + dp(.5)
+            width: dp(1.2)
+
+# Botão redondo. estilo: "vidro", "destaque" (vidro com aro vermelho), "cheio" ou "limpo".
+<BotaoRedondo>:
+    size_hint: None, None
+    size: dp(46), dp(46)
+    opacity: .7 if self.state == "down" else 1
+    canvas.before:
+        Color:
+            rgba: app.cor_capa[0], app.cor_capa[1], app.cor_capa[2], (.30 if self.estilo == "destaque" else 0)
+        Ellipse:
+            pos: self.x - dp(5), self.y - dp(5)
+            size: self.width + dp(10), self.height + dp(10)
+        Color:
+            rgba: 1, 1, 1, (1 if self.estilo == "cheio" else (.11 if self.estilo in ("vidro", "destaque") else 0))
+        Ellipse:
+            pos: self.pos
+            size: self.size
+        Color:
+            rgba: 1, 1, 1, (.22 if self.estilo == "vidro" else 0)
+        Line:
+            ellipse: self.x, self.y, self.width, self.height
+            width: dp(1)
+        Color:
+            rgba: .95, .2, .22, (.95 if self.estilo == "destaque" else 0)
+        Line:
+            ellipse: self.x, self.y, self.width, self.height
+            width: dp(1.6)
+    canvas:
+        Color:
+            rgba: self.tinta
+        Rectangle:
+            source: self.icone
+            pos: self.center_x - self.tam_icone / 2, self.center_y - self.tam_icone / 2
+            size: self.tam_icone, self.tam_icone
+
+# Três pontinhos na vertical (só visual; o toque passa para a linha).
+<IconeMais@Widget>:
+    size_hint: None, None
+    size: dp(30), dp(30)
+    canvas:
+        Color:
+            rgba: 1, 1, 1, .6
+        Ellipse:
+            pos: self.center_x - dp(1.8), self.center_y + dp(5.5)
+            size: dp(3.6), dp(3.6)
+        Ellipse:
+            pos: self.center_x - dp(1.8), self.center_y - dp(1.8)
+            size: dp(3.6), dp(3.6)
+        Ellipse:
+            pos: self.center_x - dp(1.8), self.center_y - dp(9)
+            size: dp(3.6), dp(3.6)
+
+# ======================================================================
 # PEÇAS REUTILIZÁVEIS
 # ======================================================================
 # "@" cria um widget novo combinando comportamentos.
 <BotaoIcone@ButtonBehavior+Image>:
+    opacity: .55 if self.state == "down" else 1
     size_hint: None, None
     size: dp(44), dp(44)
 
@@ -113,11 +205,16 @@
     spacing: dp(8)
     canvas.before:
         Color:
-            rgba: COR_CARTAO
+            rgba: COR_VIDRO
         RoundedRectangle:
             pos: self.pos
             size: self.size
             radius: [dp(14)]
+        Color:
+            rgba: COR_BORDA_VIDRO
+        Line:
+            width: dp(0.8)
+            rounded_rectangle: self.x, self.y, self.width, self.height, dp(14)
     Label:
         text: str(root.numero)
         size_hint_x: None
@@ -167,11 +264,16 @@
     spacing: dp(2)
     canvas.before:
         Color:
-            rgba: COR_CARTAO
+            rgba: COR_VIDRO
         RoundedRectangle:
             pos: self.pos
             size: self.size
             radius: [dp(14)]
+        Color:
+            rgba: COR_BORDA_VIDRO
+        Line:
+            width: dp(0.8)
+            rounded_rectangle: self.x, self.y, self.width, self.height, dp(14)
     Label:
         text: root.rotulo
         color: COR_CINZA
@@ -221,17 +323,126 @@
 
 # Botão redondo branco com seta para a esquerda (voltar). A área de toque é maior
 # que o círculo (44dp) para ser fácil de acertar com o dedo.
+# Ícone "letra": três linhas de texto desenhadas (não precisa de .png)
+<BotaoLetra@ButtonBehavior+Widget>:
+    size_hint: None, None
+    size: dp(46), dp(46)
+    canvas:
+        Color:
+            rgba: 1, 1, 1, (.6 if self.state == "down" else 1)
+        Line:
+            points: self.center_x - dp(12), self.center_y + dp(8), self.center_x + dp(12), self.center_y + dp(8)
+            width: dp(1.1)
+            cap: "round"
+        Line:
+            points: self.center_x - dp(12), self.center_y, self.center_x + dp(5), self.center_y
+            width: dp(1.1)
+            cap: "round"
+        Line:
+            points: self.center_x - dp(12), self.center_y - dp(8), self.center_x + dp(9), self.center_y - dp(8)
+            width: dp(1.1)
+            cap: "round"
+
+<LinhaLetra>:
+    size_hint_y: None
+    text_size: self.width - dp(8), None
+    height: self.texture_size[1] + dp(22)
+    halign: "left"
+    valign: "middle"
+    font_name: "DMSansMedium"
+    font_size: "26sp"
+    line_height: 1.1
+    color: 1, 1, 1, self.brilho
+
+<TelaLetra>:
+    BoxLayout:
+        orientation: "vertical"
+        padding: dp(16), dp(6), dp(16), dp(8)
+        spacing: dp(6)
+        BoxLayout:
+            size_hint_y: None
+            height: dp(52)
+            spacing: dp(10)
+            BotaoVoltar:
+                pos_hint: {"center_y": .5}
+                on_release: app.voltar_tela()
+            BoxLayout:
+                orientation: "vertical"
+                pos_hint: {"center_y": .5}
+                Label:
+                    text: root.titulo
+                    font_name: "DMSansMedium"
+                    font_size: "16sp"
+                    halign: "center"
+                    valign: "middle"
+                    text_size: self.size
+                    shorten: True
+                Label:
+                    text: root.artista
+                    font_size: "13sp"
+                    color: .75, .75, .78, 1
+                    halign: "center"
+                    valign: "middle"
+                    text_size: self.size
+                    shorten: True
+            Widget:
+                size_hint_x: None
+                width: dp(44)
+        FloatLayout:
+            ScrollView:
+                id: rolagem
+                size_hint: 1, 1
+                do_scroll_x: False
+                bar_width: 0
+                BoxLayout:
+                    id: caixa
+                    orientation: "vertical"
+                    size_hint_y: None
+                    height: self.minimum_height
+                    padding: dp(8), 0
+            BoxLayout:
+                orientation: "vertical"
+                size_hint: .86, None
+                height: dp(190)
+                pos_hint: {"center_x": .5, "center_y": .5}
+                spacing: dp(16)
+                opacity: 0 if root.tem_letra else 1
+                disabled: root.tem_letra
+                Label:
+                    text: root.mensagem
+                    halign: "center"
+                    valign: "middle"
+                    text_size: self.size
+                    font_size: "16sp"
+                    color: .8, .8, .84, 1
+                Button:
+                    text: "Buscando…" if root.buscando else "Buscar letra online"
+                    font_name: "DMSansMedium"
+                    font_size: "16sp"
+                    size_hint_y: None
+                    height: dp(50)
+                    disabled: root.buscando
+                    background_normal: ""
+                    background_color: 1, 1, 1, .20
+                    on_release: root.buscar_online()
+
 <BotaoVoltar@ButtonBehavior+Widget>:
     size_hint: None, None
     size: dp(44), dp(44)
+    opacity: .7 if self.state == "down" else 1
     canvas:
         Color:
-            rgba: 1, 1, 1, 1
+            rgba: 1, 1, 1, .12
         Ellipse:
-            pos: self.center_x - dp(17), self.center_y - dp(17)
-            size: dp(34), dp(34)
+            pos: self.center_x - dp(19), self.center_y - dp(19)
+            size: dp(38), dp(38)
         Color:
-            rgba: .08, .08, .08, 1
+            rgba: 1, 1, 1, .26
+        Line:
+            ellipse: self.center_x - dp(19), self.center_y - dp(19), dp(38), dp(38)
+            width: dp(1)
+        Color:
+            rgba: 1, 1, 1, 1
         Line:
             points: self.center_x + dp(3), self.center_y + dp(7), self.center_x - dp(4), self.center_y, self.center_x + dp(3), self.center_y - dp(7)
             width: dp(2.2)
@@ -241,26 +452,100 @@
 # Imagem com cantos arredondados. A textura (já recortada em "cover") é calculada
 # no main.py (classe ImagemArredondada) e desenhada aqui por um RoundedRectangle.
 # Sem imagem (tex vazio), aparece só o fundo cinza-escuro.
-<ImagemArredondada>:
-    canvas:
+<RaizSegura>:
+    canvas.before:
         Color:
-            rgba: (1, 1, 1, 1) if self.tex else COR_CARTAO
-        RoundedRectangle:
+            rgba: .035, .035, .05, 1
+        Rectangle:
             pos: self.pos
             size: self.size
+        Color:
+            rgba: app.cor_capa[0], app.cor_capa[1], app.cor_capa[2], .70
+        Rectangle:
+            texture: app.tex_orb
+            size: self.width * 1.5, self.width * 1.5
+            pos: self.right - self.width * .8, self.top - self.width * .85
+        Color:
+            rgba: app.cor_capa[1], app.cor_capa[2], app.cor_capa[0], .34
+        Rectangle:
+            texture: app.tex_orb
+            size: self.width * 1.6, self.width * 1.6
+            pos: self.x - self.width * .9, self.center_y - self.width * .5
+        Color:
+            rgba: app.cor_capa[0], app.cor_capa[1], app.cor_capa[2], .55
+        Rectangle:
+            texture: app.tex_orb
+            size: self.width * 1.6, self.width * 1.6
+            pos: self.x - self.width * .7, self.y - self.width * .8
+        Color:
+            rgba: app.cor_capa[0], app.cor_capa[1], app.cor_capa[2], root.alfa_fundo
+        Rectangle:
+            pos: self.pos
+            size: self.size
+            texture: app.gradiente
+
+<ImagemArredondada>:
+    canvas:
+        # Sombra suave (só quando sombra: True) - 3 camadas translúcidas
+        Color:
+            rgba: 0, 0, 0, (.16 if self.sombra else 0)
+        RoundedRectangle:
+            pos: self.center_x - self.width * self.escala / 2 - dp(6), self.center_y - self.height * self.escala / 2 - dp(14)
+            size: self.width * self.escala + dp(12), self.height * self.escala + dp(8)
+            radius: [self.raio + dp(8)]
+        Color:
+            rgba: 0, 0, 0, (.2 if self.sombra else 0)
+        RoundedRectangle:
+            pos: self.center_x - self.width * self.escala / 2 - dp(2), self.center_y - self.height * self.escala / 2 - dp(7)
+            size: self.width * self.escala + dp(4), self.height * self.escala + dp(2)
+            radius: [self.raio + dp(3)]
+        # Imagem: Rectangle (respeita o recorte da textura) + cantos arredondados via stencil.
+        # RoundedRectangle com textura recortada espelhava/esticava a imagem.
+        StencilPush
+        RoundedRectangle:
+            pos: self.center_x - self.width * self.escala / 2, self.center_y - self.height * self.escala / 2
+            size: self.width * self.escala, self.height * self.escala
             radius: self.raios if self.raios else [self.raio]
+        StencilUse
+        Color:
+            rgba: (1, 1, 1, self.alfa) if self.tex else COR_CARTAO
+        Rectangle:
+            pos: self.center_x - self.width * self.escala / 2, self.center_y - self.height * self.escala / 2
+            size: self.width * self.escala, self.height * self.escala
             texture: self.tex
+        StencilUnUse
+        RoundedRectangle:
+            pos: self.center_x - self.width * self.escala / 2, self.center_y - self.height * self.escala / 2
+            size: self.width * self.escala, self.height * self.escala
+            radius: self.raios if self.raios else [self.raio]
+        StencilPop
+        Color:
+            rgba: 1, 1, 1, (.18 * self.alfa if (self.tex and not self.raios) else 0)
+        Line:
+            rounded_rectangle: self.center_x - self.width * self.escala / 2, self.center_y - self.height * self.escala / 2, self.width * self.escala, self.height * self.escala, min(self.raio, self.width * self.escala / 2, self.height * self.escala / 2)
+            width: dp(1)
 
 # Seta para baixo/esquerda desenhada com linhas (não precisa de arquivo de imagem)
 <IconeChevron@ButtonBehavior+Widget>:
     size_hint: None, None
     size: dp(44), dp(44)
+    opacity: .7 if self.state == "down" else 1
     canvas:
+        Color:
+            rgba: 1, 1, 1, .12
+        Ellipse:
+            pos: self.center_x - dp(19), self.center_y - dp(19)
+            size: dp(38), dp(38)
+        Color:
+            rgba: 1, 1, 1, .26
+        Line:
+            ellipse: self.center_x - dp(19), self.center_y - dp(19), dp(38), dp(38)
+            width: dp(1)
         Color:
             rgba: 1, 1, 1, 1
         Line:
-            points: self.center_x - dp(11), self.center_y + dp(5), self.center_x, self.center_y - dp(6), self.center_x + dp(11), self.center_y + dp(5)
-            width: dp(2)
+            points: self.center_x - dp(8), self.center_y + dp(3.5), self.center_x, self.center_y - dp(4.5), self.center_x + dp(8), self.center_y + dp(3.5)
+            width: dp(2.2)
             cap: "round"
             joint: "round"
 
@@ -287,67 +572,69 @@
 <BarraProgresso>:
     canvas:
         Color:
-            rgba: 1, 1, 1, .25
+            rgba: 1, 1, 1, .2
         RoundedRectangle:
-            pos: self.x, self.center_y - dp(2)
-            size: self.width, dp(4)
-            radius: [dp(2)]
+            pos: self.x, self.center_y - dp(2.5)
+            size: self.width, dp(5)
+            radius: [dp(2.5)]
+        Color:
+            rgba: .95, .2, .22, 1
+        RoundedRectangle:
+            pos: self.x, self.center_y - dp(2.5)
+            size: max(self.width * self.fracao, dp(5)), dp(5)
+            radius: [dp(2.5)]
+        Color:
+            rgba: .95, .2, .22, .3
+        Ellipse:
+            pos: self.x + self.width * self.fracao - dp(12), self.center_y - dp(12)
+            size: dp(24), dp(24)
         Color:
             rgba: 1, 1, 1, 1
-        RoundedRectangle:
-            pos: self.x, self.center_y - dp(2)
-            size: max(self.width * self.fracao, dp(4)), dp(4)
-            radius: [dp(2)]
         Ellipse:
-            pos: self.x + self.width * self.fracao - dp(7), self.center_y - dp(7)
-            size: dp(14), dp(14)
+            pos: self.x + self.width * self.fracao - dp(8), self.center_y - dp(8)
+            size: dp(16), dp(16)
 
 # Barrinha do que está tocando; aparece no menu e na playlist. Toque = abre o player.
-<MiniPlayer@ButtonBehavior+BoxLayout>:
+<MiniPlayer@ButtonBehavior+CartaoVidro>:
     size_hint_y: None
-    height: dp(64) if app.tem_musica else 0
+    height: dp(78) if app.tem_musica else 0
     opacity: 1 if app.tem_musica else 0
     disabled: not app.tem_musica
-    padding: dp(18), dp(8)
-    spacing: dp(10)
+    raio: dp(30)
+    padding: dp(14), dp(10), dp(14), dp(12)
+    spacing: dp(12)
     on_release: app.ir("player", "up")
-    canvas.before:
-        Color:
-            rgba: COR_CARTAO
-        RoundedRectangle:
-            pos: self.x + dp(8), self.y + dp(4)
-            size: self.width - dp(16), self.height - dp(8)
-            radius: [dp(14)]
-    # canvas.after TEM que vir antes dos widgets filhos no .kv (o parser recusa depois);
-    # na tela ele continua sendo desenhado por cima dos filhos.
+    # canvas.after TEM que vir antes dos widgets filhos no .kv (o parser recusa depois).
     canvas.after:
         Color:
-            rgba: COR_DESTAQUE
+            rgba: .95, .2, .22, 1
         RoundedRectangle:
-            pos: self.x + dp(16), self.y + dp(6)
-            size: (max(0, (self.width - dp(32)) * min(1, max(0, app.posicao / app.duracao))) if app.duracao else 0, dp(2))
+            pos: self.x + dp(30), self.y + dp(7)
+            size: (max(0, (self.width - dp(60)) * min(1, max(0, app.posicao / app.duracao))) if app.duracao else 0, dp(2))
             radius: [dp(1)]
     ImagemArredondada:
         size_hint: None, None
-        size: dp(44), dp(44)
+        size: dp(52), dp(52)
         pos_hint: {"center_y": .5}
-        raio: dp(8)
+        raio: dp(14)
         source: app.capa_atual
     BoxLayout:
         orientation: "vertical"
         Texto:
             text: app.titulo_atual
-            font_size: "15sp"
+            font_name: "DMSansMedium"
+            font_size: "16sp"
             valign: "bottom"
             color: 1, 1, 1, 1
         Texto:
             text: app.artista_atual
-            font_size: "12sp"
+            font_size: "13sp"
             valign: "top"
             color: COR_CINZA
-    BotaoIcone:
-        source: "arquivos/icones/pause.png" if app.tocando else "arquivos/icones/play.png"
-        size: dp(36), dp(36)
+    BotaoRedondo:
+        icone: "arquivos/icones/pause.png" if app.tocando else "arquivos/icones/play.png"
+        size: dp(48), dp(48)
+        tam_icone: dp(20)
         pos_hint: {"center_y": .5}
         on_release: app.pausar_ou_retomar()
 
@@ -357,39 +644,62 @@
 # ======================================================================
 # -------- playlist:  1  [capa]  Título / Artista --------
 <LinhaMusica>:
+    canvas.before:
+        Color:
+            rgba: (1, 1, 1, .09) if self.state == "down" else (0, 0, 0, 0)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(18)]
+        # separador fino (não aparece nas bordas)
+        Color:
+            rgba: 1, 1, 1, .07
+        Rectangle:
+            pos: self.x + dp(46), self.y
+            size: self.width - dp(56), dp(1)
     size_hint_y: None
-    height: dp(60)
-    padding: dp(4), dp(4)
+    height: dp(70)
+    padding: dp(8), dp(6), dp(4), dp(6)
     spacing: dp(12)
     Texto:
         text: str(root.numero)
         size_hint_x: None
-        width: dp(28)
+        width: dp(24)
         halign: "center"
-        font_size: "16sp"
+        font_size: "15sp"
         color: COR_CINZA
     ImagemArredondada:
         size_hint: None, None
-        size: dp(46), dp(46)
+        size: dp(54), dp(54)
         pos_hint: {"center_y": .5}
-        raio: dp(8)
+        raio: dp(14)
         source: root.capa
     BoxLayout:
         orientation: "vertical"
         Texto:
             text: root.titulo
+            font_name: "DMSansMedium"
             font_size: "17sp"
             valign: "bottom"
             # a música que está tocando fica vermelha
-            color: COR_DESTAQUE if root.id_musica == app.id_atual else (1, 1, 1, 1)
+            color: (1, .27, .3, 1) if root.id_musica == app.id_atual else (1, 1, 1, 1)
         Texto:
             text: root.artista
             font_size: "13sp"
             valign: "top"
             color: COR_CINZA
+    IconeMais:
+        pos_hint: {"center_y": .5}
 
 # -------- fila ("A Seguir"):  [capa]  Título / Artista   ≡ --------
 <LinhaFila>:
+    canvas.before:
+        Color:
+            rgba: (1, 1, 1, .09) if self.state == "down" else (0, 0, 0, 0)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(14)]
     size_hint_y: None
     height: dp(64)
     padding: 0, dp(4)
@@ -398,7 +708,7 @@
         size_hint: None, None
         size: dp(54), dp(54)
         pos_hint: {"center_y": .5}
-        raio: dp(8)
+        raio: dp(14)
         source: root.capa
     BoxLayout:
         orientation: "vertical"
@@ -417,13 +727,43 @@
 
 # -------- playlist no menu --------
 <CartaoPlaylist>:
+    canvas.before:
+        Color:
+            rgba: 1, 1, 1, (.15 if self.state == "down" else .06)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(30)]
+        Color:
+            rgba: 1, 1, 1, .12
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(30)]
+            texture: app.gradiente
+        Color:
+            rgba: 1, 1, 1, .2
+        Line:
+            rounded_rectangle: self.x, self.y, self.width, self.height, dp(30)
+            width: dp(1)
+        Color:
+            rgba: 1, 1, 1, .45
+        Line:
+            points: self.x + dp(30), self.top - dp(.5), self.right - dp(30), self.top - dp(.5)
+            width: dp(1)
+        Color:
+            rgba: app.cor_capa[0], app.cor_capa[1], app.cor_capa[2], .6
+        Line:
+            points: self.x + dp(30), self.y + dp(.5), self.right - dp(30), self.y + dp(.5)
+            width: dp(1.2)
     size_hint_y: None
-    height: min(dp(124), max(dp(88), root.width * .36))
+    height: min(dp(124), max(dp(88), root.width * .36)) + dp(24)
+    padding: dp(12)
     spacing: min(dp(14), root.width * .045)
     ImagemArredondada:
         size_hint: None, None
         size: min(dp(124), max(dp(88), root.width * .36)), min(dp(124), max(dp(88), root.width * .36))
-        raio: dp(20)
+        raio: dp(22)
         source: root.capa
     BoxLayout:
         orientation: "vertical"
@@ -561,11 +901,16 @@
                     padding: dp(5)
                     canvas.before:
                         Color:
-                            rgba: COR_CARTAO
+                            rgba: COR_VIDRO
                         RoundedRectangle:
                             pos: self.pos
                             size: self.size
                             radius: [dp(24)]
+                        Color:
+                            rgba: COR_BORDA_VIDRO
+                        Line:
+                            width: dp(0.8)
+                            rounded_rectangle: self.x, self.y, self.width, self.height, dp(24)
                     Button:
                         text: "Cadastro"
                         bold: True
@@ -718,11 +1063,16 @@
             spacing: dp(3)
             canvas.before:
                 Color:
-                    rgba: COR_CARTAO
+                    rgba: COR_VIDRO
                 RoundedRectangle:
                     pos: self.pos
                     size: self.size
                     radius: [dp(22)]
+                Color:
+                    rgba: COR_BORDA_VIDRO
+                Line:
+                    width: dp(0.8)
+                    rounded_rectangle: self.x, self.y, self.width, self.height, dp(22)
             BotaoSegmentado:
                 text: "Músicas"
                 font_size: "14sp"
@@ -746,11 +1096,16 @@
             spacing: dp(3)
             canvas.before:
                 Color:
-                    rgba: COR_CARTAO
+                    rgba: COR_VIDRO
                 RoundedRectangle:
                     pos: self.pos
                     size: self.size
                     radius: [dp(22)]
+                Color:
+                    rgba: COR_BORDA_VIDRO
+                Line:
+                    width: dp(0.8)
+                    rounded_rectangle: self.x, self.y, self.width, self.height, dp(22)
             BotaoSegmentado:
                 text: "Semana"
                 font_size: "13sp"
@@ -890,7 +1245,7 @@
                     height: dp(99)
                     canvas.before:
                         Color:
-                            rgba: .47, .47, .47, 1
+                            rgba: 1, 1, 1, .1
                         RoundedRectangle:
                             pos: self.pos
                             size: self.size
@@ -923,11 +1278,16 @@
         pos_hint: {"center_y": .5}
         canvas:
             Color:
-                rgba: COR_CARTAO
+                rgba: COR_VIDRO
             RoundedRectangle:
                 pos: self.pos
                 size: self.size
                 radius: [dp(23)]
+            Color:
+                rgba: COR_BORDA_VIDRO
+            Line:
+                width: dp(0.8)
+                rounded_rectangle: self.x, self.y, self.width, self.height, dp(23)
             Color:
                 rgba: COR_DESTAQUE
             Rectangle:
@@ -1102,8 +1462,8 @@
 <TelaPlaylist>:
     BoxLayout:
         orientation: "vertical"
-        padding: dp(16), dp(10), dp(16), 0
-        spacing: dp(8)
+        padding: dp(14), dp(10), dp(14), dp(10)
+        spacing: dp(10)
 
         # Cabeçalho com botão de retorno explícito
         BoxLayout:
@@ -1113,8 +1473,9 @@
                 on_release: app.voltar_tela()
             Label:
                 text: "Minhas playlists"
-                font_size: "16sp"
-                color: COR_CINZA
+                font_name: "DMSansMedium"
+                font_size: "17sp"
+                color: .86, .88, 1, 1
                 halign: "center"
                 valign: "middle"
                 text_size: self.size
@@ -1122,14 +1483,17 @@
                 size_hint_x: None
                 width: dp(44)
 
-        # Cabeçalho: capa à esquerda, textos e botões à direita
-        BoxLayout:
+        # Cabeçalho (cartão de vidro): capa à esquerda, textos e botões à direita
+        CartaoVidro:
+            id: cab_playlist
             size_hint_y: None
-            height: min(dp(136), max(dp(108), root.width * .38))
-            spacing: min(dp(14), root.width * .04)
+            height: min(dp(152), max(dp(124), root.width * .42))
+            raio: dp(30)
+            padding: dp(14)
+            spacing: min(dp(16), root.width * .04)
             ImagemArredondada:
                 size_hint: None, None
-                size: min(dp(124), max(dp(88), root.width * .34)), min(dp(124), max(dp(88), root.width * .34))
+                size: cab_playlist.height - dp(28), cab_playlist.height - dp(28)
                 raio: dp(20)
                 source: root.capa_playlist
             BoxLayout:
@@ -1137,28 +1501,35 @@
                 Texto:
                     text: root.nome_playlist
                     bold: True
-                    font_size: min(sp(26), max(sp(16), self.width * .14))
+                    font_size: min(sp(28), max(sp(17), self.width * .14))
                     valign: "bottom"
                     shorten: False
                     max_lines: 2
                 Texto:
                     text: root.subtitulo
-                    font_size: "12sp"
+                    font_size: "14sp"
                     color: COR_CINZA
                     size_hint_y: None
-                    height: dp(22)
+                    height: dp(24)
                 BoxLayout:
                     size_hint_y: None
-                    height: dp(48)
+                    height: dp(50)
                     spacing: dp(10)
-                    BotaoIcone:
-                        source: "arquivos/icones/play.png"
+                    BotaoRedondo:
+                        icone: "arquivos/icones/play.png"
+                        estilo: "destaque"
+                        size: dp(48), dp(48)
+                        tam_icone: dp(20)
                         on_release: root.tocar_a_partir_de(0)
-                    BotaoIcone:
-                        source: "arquivos/icones/shuffle.png"
+                    BotaoRedondo:
+                        icone: "arquivos/icones/shuffle.png"
+                        size: dp(48), dp(48)
+                        tam_icone: dp(24)
                         on_release: root.tocar_aleatorio()
-                    BotaoIcone:
-                        source: "arquivos/icones/busca.png"
+                    BotaoRedondo:
+                        icone: "arquivos/icones/busca.png"
+                        size: dp(48), dp(48)
+                        tam_icone: dp(22)
                         on_release: root.alternar_busca()
                     Widget:   # espaçador: empurra os botões para a esquerda
 
@@ -1173,36 +1544,29 @@
             hint_text: "Buscar na playlist"
             background_normal: ""
             background_active: ""
-            background_color: COR_CARTAO
+            background_color: 1, 1, 1, .09
             foreground_color: 1, 1, 1, 1
             hint_text_color: COR_CINZA
             cursor_color: 1, 1, 1, 1
-            padding: dp(14), dp(12)
+            padding: dp(16), dp(12)
             on_text: root.filtrar(self.text)
 
-        # Linha divisória
-        Widget:
-            size_hint_y: None
-            height: dp(1)
-            canvas:
-                Color:
-                    rgba: COR_LINHA
-                Rectangle:
-                    pos: self.pos
-                    size: self.size
-
-        # A LISTA. RecycleView só cria os widgets que cabem na tela e os
-        # "recicla" ao rolar - essencial para listas grandes no celular.
-        RecycleView:
-            id: lista
-            key_viewclass: "viewclass"
-            viewclass: "LinhaMusica"
-            RecycleBoxLayout:
-                orientation: "vertical"
-                default_size: None, dp(60)
-                default_size_hint: 1, None
-                size_hint_y: None
-                height: self.minimum_height
+        # A LISTA (dentro de um painel de vidro). RecycleView só cria os widgets que
+        # cabem na tela e os "recicla" ao rolar - essencial para listas grandes.
+        CartaoVidro:
+            raio: dp(30)
+            padding: dp(8), dp(10), dp(8), dp(10)
+            RecycleView:
+                id: lista
+                key_viewclass: "viewclass"
+                viewclass: "LinhaMusica"
+                bar_width: 0
+                RecycleBoxLayout:
+                    orientation: "vertical"
+                    default_size: None, dp(70)
+                    default_size_hint: 1, None
+                    size_hint_y: None
+                    height: self.minimum_height
 
         MiniPlayer:
 
@@ -1217,31 +1581,61 @@
     halign: "left"
     valign: "top"
 
-# Cartão cinza de cantos bem arredondados (usado em "Sobre o artista/música").
-<CartaoInfo@BoxLayout>:
+# Cartão de vidro (usado em "Sobre o artista/música").
+<CartaoInfo@CartaoVidro>:
     orientation: "vertical"
     size_hint_y: None
     height: self.minimum_height
-    canvas.before:
-        Color:
-            rgba: .15, .15, .15, 1
-        RoundedRectangle:
-            pos: self.pos
-            size: self.size
-            radius: [dp(33)]
+    raio: dp(33)
 
 # Igual ao CartaoInfo, mas clicável: fica um pouco mais claro enquanto é pressionado.
-<CartaoArtista@ButtonBehavior+BoxLayout>:
+<CartaoArtista@ButtonBehavior+CartaoVidro>:
     orientation: "vertical"
     size_hint_y: None
     height: self.minimum_height
+    raio: dp(33)
+    opacity: .85 if self.state == "down" else 1
+
+# Linha da letra sob o artista: até 2 linhas, alinhada à esquerda, clicável.
+<LinhaDaLetra@ButtonBehavior+Label>:
+    size_hint_y: 1
+    text_size: self.width, self.height - dp(12)
+    halign: "left"
+    valign: "middle"
+    max_lines: 2
+    line_height: 1.08
+    font_name: "DMSansMedium"
+    font_size: sp(21) if len(self.text) <= 34 else sp(17)
+
+# Uma linha do cartão "Prévia da letra". 'destaque' = a linha cantada agora (maior, negrito).
+<LinhaPrevia@Label>:
+    destaque: False
+    size_hint_y: None
+    height: dp(94) if self.destaque else dp(54)
+    text_size: self.width, self.height
+    halign: "left"
+    valign: "middle"
+    max_lines: 2
+    line_height: 1.08
+    font_name: "DMSansMedium"
+    bold: self.destaque
+    font_size: sp(26) if self.destaque else sp(18)
+    color: 1, 1, 1, .5
+
+# Pílula branca com texto escuro (como o "Mostrar letra" do Spotify).
+<BotaoPilula@ButtonBehavior+Label>:
+    size_hint: None, None
+    size: dp(150), dp(44)
+    font_name: "DMSansMedium"
+    font_size: "15sp"
+    color: .08, .08, .1, 1
     canvas.before:
         Color:
-            rgba: (.2, .2, .2, 1) if self.state == "down" else (.15, .15, .15, 1)
+            rgba: 1, 1, 1, (.8 if self.state == "down" else 1)
         RoundedRectangle:
             pos: self.pos
             size: self.size
-            radius: [dp(33)]
+            radius: [self.height / 2]
 
 <TelaPlayer>:
     # Sempre que a tela abre, volta para o topo (o player em si)
@@ -1284,8 +1678,8 @@
                         Label:
                             text: app.origem
                             font_name: "DMSansMedium"
-                            font_size: "16sp"
-                            color: .78, .78, .78, 1
+                            font_size: "17sp"
+                            color: 1, 1, 1, 1
                             valign: "top"
                             text_size: self.size
                             halign: "center"
@@ -1299,36 +1693,84 @@
                 Widget:
                     size_hint_y: 2
 
-                # Capa quadrada grande (encolhe um pouco em telas baixas)
+                # Capa dentro de uma moldura de vidro, com halo de luz na cor da capa.
                 AnchorLayout:
                     id: area_capa
                     size_hint_y: None
-                    height: min(self.width, max(dp(92), root.height - dp(356)))
+                    height: min(self.width, max(dp(120), root.height - dp(352)))
+                    canvas.before:
+                        Color:
+                            rgba: app.cor_capa[0], app.cor_capa[1], app.cor_capa[2], .65
+                        Rectangle:
+                            texture: app.tex_orb
+                            size: min(self.width, self.height) * 1.7, min(self.width, self.height) * 1.7
+                            pos: self.center_x - min(self.width, self.height) * .85, self.center_y - min(self.width, self.height) * .95
+                        Color:
+                            rgba: 1, 1, 1, .07
+                        RoundedRectangle:
+                            pos: self.center_x - min(self.width, self.height) / 2, self.center_y - min(self.width, self.height) / 2
+                            size: min(self.width, self.height), min(self.width, self.height)
+                            radius: [dp(40)]
+                        Color:
+                            rgba: 1, 1, 1, .12
+                        RoundedRectangle:
+                            pos: self.center_x - min(self.width, self.height) / 2, self.center_y - min(self.width, self.height) / 2
+                            size: min(self.width, self.height), min(self.width, self.height)
+                            radius: [dp(40)]
+                            texture: app.gradiente
+                        Color:
+                            rgba: 1, 1, 1, .22
+                        Line:
+                            rounded_rectangle: self.center_x - min(self.width, self.height) / 2, self.center_y - min(self.width, self.height) / 2, min(self.width, self.height), min(self.width, self.height), dp(40)
+                            width: dp(1)
+                        Color:
+                            rgba: .95, .2, .22, .5
+                        Line:
+                            points: self.center_x - min(self.width, self.height) / 2 + dp(40), self.center_y - min(self.width, self.height) / 2 + dp(.5), self.center_x + min(self.width, self.height) / 2 - dp(40), self.center_y - min(self.width, self.height) / 2 + dp(.5)
+                            width: dp(1.4)
                     ImagemArredondada:
+                        id: capa_player
+                        sombra: True
                         size_hint: None, None
-                        size: min(area_capa.width, area_capa.height), min(area_capa.width, area_capa.height)
-                        raio: dp(22)
+                        size: min(area_capa.width, area_capa.height) - dp(26), min(area_capa.width, area_capa.height) - dp(26)
+                        raio: dp(28)
                         source: app.capa_atual
 
                 Widget:
                     size_hint_y: None
-                    height: dp(10)
+                    height: dp(14)
 
-                Texto:
-                    text: app.titulo_atual
-                    bold: True
-                    font_size: sp(28) if len(self.text) <= 14 else (sp(22) if len(self.text) <= 24 else sp(18))
+                # Título + artista | botão "mais" (abre os cartões sobre o artista/música)
+                BoxLayout:
                     size_hint_y: None
-                    height: dp(40)
-                Texto:
-                    text: app.artista_atual
-                    font_size: "18sp"
-                    color: COR_CINZA
-                    size_hint_y: None
-                    height: dp(28)
+                    height: dp(68)
+                    spacing: dp(10)
+                    padding: dp(4), 0, dp(2), 0
+                    BoxLayout:
+                        orientation: "vertical"
+                        Texto:
+                            text: app.titulo_atual
+                            bold: True
+                            font_size: sp(28) if len(self.text) <= 14 else (sp(22) if len(self.text) <= 24 else sp(18))
+                            size_hint_y: None
+                            height: dp(40)
+                        Texto:
+                            text: app.artista_atual
+                            font_size: "18sp"
+                            color: COR_CINZA
+                            size_hint_y: None
+                            height: dp(28)
+                    BotaoRedondo:
+                        icone: "arquivos/icones/mais.png"
+                        size: dp(42), dp(42)
+                        tam_icone: dp(22)
+                        pos_hint: {"center_y": .5}
+                        on_release: Animation(scroll_y=0, duration=.5, t="out_quad").start(rolagem)
 
-                Widget:
-                    size_hint_y: 1
+                # Só a linha cantada agora (letras sincronizadas); toque abre a letra inteira.
+                LinhaDaLetra:
+                    text: root.letra_linha
+                    color: 1, 1, 1, root.letra_alfa
 
                 BarraProgresso:
                     id: barra
@@ -1349,46 +1791,47 @@
                         font_size: "13sp"
                         color: COR_CINZA
 
-                # Controles: aleatório | anterior - play/pause - próxima
+                # Controles: aleatório | anterior - play/pause - próxima | fila
                 BoxLayout:
                     size_hint_y: None
-                    height: dp(84)
-                    spacing: dp(22)
-                    BotaoIcone:
-                        source: "arquivos/icones/shuffle.png"
-                        size: dp(34), dp(34)
+                    height: dp(88)
+                    spacing: dp(4)
+                    BotaoRedondo:
+                        icone: "arquivos/icones/shuffle.png"
+                        estilo: "limpo"
+                        size: dp(46), dp(46)
+                        tam_icone: dp(26)
+                        tinta: (1, .27, .3, 1) if app.aleatorio else (1, 1, 1, .6)
                         pos_hint: {"center_y": .5}
-                        opacity: 1 if app.aleatorio else .45
                         on_release: app.alternar_aleatorio()
                     Widget:
-                    BotaoIcone:
-                        source: "arquivos/icones/back.png"
-                        size: dp(34), dp(34)
+                    BotaoRedondo:
+                        icone: "arquivos/icones/back.png"
+                        estilo: "limpo"
+                        size: dp(52), dp(52)
+                        tam_icone: dp(32)
                         pos_hint: {"center_y": .5}
                         on_release: app.faixa_anterior()
-                    BotaoIcone:
-                        source: "arquivos/icones/pause.png" if app.tocando else "arquivos/icones/play.png"
-                        size: dp(64), dp(64)
+                    BotaoRedondo:
+                        icone: "arquivos/icones/pause.png" if app.tocando else "arquivos/icones/play.png"
+                        estilo: "destaque"
+                        size: dp(76), dp(76)
+                        tam_icone: dp(30)
                         pos_hint: {"center_y": .5}
                         on_release: app.pausar_ou_retomar()
-                    BotaoIcone:
-                        source: "arquivos/icones/advance.png"
-                        size: dp(34), dp(34)
+                    BotaoRedondo:
+                        icone: "arquivos/icones/advance.png"
+                        estilo: "limpo"
+                        size: dp(52), dp(52)
+                        tam_icone: dp(32)
                         pos_hint: {"center_y": .5}
                         on_release: app.pular()
                     Widget:
-                    Widget:
-                        size_hint_x: None
-                        width: dp(34)
-
-                # Canto inferior direito: abre a fila
-                BoxLayout:
-                    size_hint_y: None
-                    height: dp(48)
-                    Widget:
-                    BotaoIcone:
-                        source: "arquivos/icones/queue.png"
-                        size: dp(34), dp(34)
+                    BotaoRedondo:
+                        icone: "arquivos/icones/queue.png"
+                        estilo: "limpo"
+                        size: dp(46), dp(46)
+                        tam_icone: dp(28)
                         pos_hint: {"center_y": .5}
                         on_release: app.ir("fila", "left")
 
@@ -1399,6 +1842,53 @@
                 height: self.minimum_height
                 padding: dp(20), dp(20), dp(20), dp(40)
                 spacing: dp(24)
+
+                # ---- Cartão "Prévia da letra": 2 linhas antes, a atual (grande) e 2 depois ----
+                CartaoInfo:
+                    padding: dp(24), dp(18), dp(24), dp(22)
+                    spacing: dp(8)
+                    Texto:
+                        text: "Prévia da letra"
+                        bold: True
+                        font_size: "20sp"
+                        size_hint_y: None
+                        height: dp(32)
+                    BoxLayout:
+                        orientation: "vertical"
+                        size_hint_y: None
+                        height: self.minimum_height if root.letra_tem else 0
+                        opacity: 1 if root.letra_tem else 0
+                        spacing: dp(6)
+                        LinhaPrevia:
+                            text: root.letra_a2
+                        LinhaPrevia:
+                            text: root.letra_a1
+                        LinhaPrevia:
+                            text: root.letra_atual
+                            destaque: root.letra_sincronizada
+                            color: 1, 1, 1, (root.letra_alfa if root.letra_sincronizada else .55)
+                        LinhaPrevia:
+                            text: root.letra_p1
+                        LinhaPrevia:
+                            text: root.letra_p2
+                    Label:
+                        text: root.letra_msg
+                        size_hint_y: None
+                        height: 0 if root.letra_tem else dp(64)
+                        opacity: 0 if root.letra_tem else 1
+                        text_size: self.width, self.height
+                        halign: "left"
+                        valign: "middle"
+                        font_size: "15sp"
+                        color: COR_CINZA
+                    BoxLayout:
+                        size_hint_y: None
+                        height: dp(52)
+                        padding: 0, dp(6), 0, 0
+                        BotaoPilula:
+                            text: "Mostrar letra" if root.letra_tem else "Buscar letra"
+                            on_release: app.ir("letra", "up")
+                        Widget:
 
                 # ---- Cartão "Sobre o Artista" (toque = abre a página do artista) ----
                 CartaoArtista:
@@ -1451,8 +1941,8 @@
                         TextoMulti:
                             text: app.info_artista_descricao
                             font_size: sp(11.5)
-                            color: .5, .5, .5, 1
-                            line_height: 1.1
+                            color: .78, .8, .9, 1
+                            line_height: 1.12
 
                 # ---- Cartão "Sobre a música" ----
                 CartaoInfo:
@@ -1467,7 +1957,7 @@
                     TextoMulti:
                         text: app.info_musica
                         font_size: "15sp"
-                        color: .45, .45, .45, 1
+                        color: .78, .8, .9, 1
                         line_height: 1.2
 
 # ======================================================================
@@ -1481,7 +1971,7 @@
         size_hint: None, None
         size: dp(56), dp(56)
         pos_hint: {"center_y": .5}
-        raio: dp(8)
+        raio: dp(14)
         source: app.capa_atual
     BoxLayout:
         orientation: "vertical"
@@ -1495,9 +1985,11 @@
             font_size: "14sp"
             valign: "top"
             color: COR_CINZA
-    BotaoIcone:
-        source: "arquivos/icones/pause.png" if app.tocando else "arquivos/icones/play.png"
+    BotaoRedondo:
+        icone: "arquivos/icones/pause.png" if app.tocando else "arquivos/icones/play.png"
+        estilo: "destaque"
         size: dp(48), dp(48)
+        tam_icone: dp(20)
         pos_hint: {"center_y": .5}
         on_release: app.pausar_ou_retomar()
 
@@ -1508,11 +2000,16 @@
     padding: dp(6), dp(8), dp(6), dp(4)
     canvas.before:
         Color:
-            rgba: (0.3, 0.3, 0.3, 1) if app.aleatorio else COR_CARTAO
+            rgba: (.95, .2, .22, .30) if app.aleatorio else (1, 1, 1, .09)
         RoundedRectangle:
             pos: self.pos
             size: self.size
-            radius: [dp(18)]
+            radius: [dp(22)]
+        Color:
+            rgba: (.95, .2, .22, .7) if app.aleatorio else (1, 1, 1, .22)
+        Line:
+            rounded_rectangle: self.x, self.y, self.width, self.height, dp(22)
+            width: dp(1)
     Image:
         source: "arquivos/icones/shuffle.png"
     Label:

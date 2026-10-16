@@ -17,7 +17,10 @@ No Python, qualquer tela chama App.get_running_app().pular(), etc.
 import faulthandler
 import hashlib
 import json
+import math
 import os
+import random
+import threading
 import time
 from functools import lru_cache
 from datetime import datetime, timedelta
@@ -96,10 +99,13 @@ from pathlib import Path
 
 from kivy.app import App
 from kivy.base import ExceptionHandler, ExceptionManager
+from kivy.animation import Animation
 from kivy.clock import Clock
 from kivy.core.image import Image as CoreImage
 from kivy.core.text import LabelBase
 from kivy.core.window import Window
+from kivy.graphics import Color, RoundedRectangle
+from kivy.graphics.texture import Texture
 from kivy.metrics import dp
 from kivy.properties import (BooleanProperty, ListProperty, NumericProperty,
                              ObjectProperty, StringProperty)
@@ -118,6 +124,7 @@ from kivy.utils import platform
 
 import db
 import fila
+import letras
 from auth import AuthStore
 from audio import criar_motor
 from db import (_sem_acento, atualizar_reproducao, estatisticas_artistas, estatisticas_musicas,
@@ -321,9 +328,13 @@ class ImagemArredondada(Widget):
     # Para arredondar só alguns cantos: raios: [sup.esq, sup.dir, inf.dir, inf.esq]
     raios = ListProperty([])
     tex = ObjectProperty(None, allownone=True)  # textura já recortada (None = sem imagem)
+    alfa = NumericProperty(1)  # animado: a imagem surge com fade em vez de "piscar"
+    escala = NumericProperty(1)  # animado: a capa do player "respira" ao pausar/tocar
+    sombra = BooleanProperty(False)  # sombra suave sob a imagem
 
     def __init__(self, **kwargs):
         self._original = None
+        self._animar = False
         self._tentativas = 0
         self._retry = None
         super().__init__(**kwargs)
@@ -344,6 +355,7 @@ class ImagemArredondada(Widget):
             if caminho:
                 try:
                     self._original = _textura_compartilhada(caminho)
+                    self._animar = True
                 except Exception as erro:
                     print("imagem: não consegui abrir", caminho, "->", erro)
             if self._original is None and self._tentativas < 6:
@@ -360,16 +372,189 @@ class ImagemArredondada(Widget):
             self.tex = None
             return
         tw, th = original.size
-        if tw / th > w / h:      # imagem mais larga que o espaço: corta as laterais
-            cw, ch = th * w / h, th
-        else:                    # mais alta: corta em cima e embaixo
-            cw, ch = tw, tw * h / w
-        cw, ch = min(tw, max(1, int(round(cw)))), min(th, max(1, int(round(ch))))
-        x, y = (tw - cw) // 2, (th - ch) // 2
+        if abs(tw / th - w / h) < 0.01:
+            self.tex = original          # mesma proporção: imagem inteira, sem recorte
+        else:
+            if tw / th > w / h:      # imagem mais larga que o espaço: corta as laterais
+                cw, ch = th * w / h, th
+            else:                    # mais alta: corta em cima e embaixo
+                cw, ch = tw, tw * h / w
+            cw, ch = min(tw, max(1, int(round(cw)))), min(th, max(1, int(round(ch))))
+            x, y = (tw - cw) // 2, (th - ch) // 2
+            self.tex = self._recorte_exato(original, x, y, cw, ch)
+        if self.tex is not None and self._animar:
+            self._animar = False
+            self.alfa = 0
+            Animation(alfa=1, duration=.35, t="out_quad").start(self)
+
+    def _recorte_exato(self, original, x, y, cw, ch):
+        """Sub-região da textura (sem copiar pixels). O desenho é feito com Rectangle no .kv,
+        que respeita as coordenadas da região - assim a imagem não estica, não espelha
+        e não fica de cabeça para baixo."""
         try:
-            self.tex = original.get_region(x, y, cw, ch)
+            return original.get_region(x, y, cw, ch)
         except Exception:
-            self.tex = original  # plano B: estica a imagem inteira
+            return None      # nunca estica: sem recorte válido, mostra só o fundo
+
+
+class OndaProgresso(Widget):
+    """
+    Onda decorativa que também mostra o progresso: as barras já tocadas ficam
+    vermelhas, as próximas ficam de vidro. O formato vem do id da música (sempre igual).
+    """
+    progresso = NumericProperty(0)
+    semente = NumericProperty(0)
+    total = 44
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._barras = []    # (Color, RoundedRectangle)
+        self._alturas = []
+        self._tocadas = -1
+        self.bind(pos=self._posicionar, size=self._posicionar,
+                  semente=self._criar, progresso=self._pintar)
+        self._criar()
+
+    def _criar(self, *_):
+        rnd = random.Random(int(self.semente) + 7)
+        self._alturas = [
+            max(.14, min(1.0, abs(math.sin(i * .42 + rnd.random() * 1.4)) * (.45 + .55 * rnd.random())))
+            for i in range(self.total)]
+        self.canvas.clear()
+        self._barras = []
+        with self.canvas:
+            for _i in range(self.total):
+                cor = Color(1, 1, 1, .3)
+                self._barras.append((cor, RoundedRectangle(radius=[dp(1.6)])))
+        self._tocadas = -1
+        self._posicionar()
+        self._pintar()
+
+    def _posicionar(self, *_):
+        if not self._barras or self.width <= 0:
+            return
+        passo = self.width / self.total
+        largura = max(dp(2), passo * .52)
+        for i, (_cor, ret) in enumerate(self._barras):
+            altura = max(dp(4), self.height * self._alturas[i])
+            ret.size = (largura, altura)
+            ret.pos = (self.x + i * passo + (passo - largura) / 2, self.center_y - altura / 2)
+
+    def _pintar(self, *_):
+        tocadas = int(round(max(0, min(1, self.progresso)) * self.total))
+        if tocadas == self._tocadas:
+            return
+        self._tocadas = tocadas
+        for i, (cor, _ret) in enumerate(self._barras):
+            if i < tocadas:
+                cor.rgba = (1, .18, .22, 1)
+            else:
+                cor.rgba = (1, 1, 1, .14 + .26 * (1 - i / self.total))
+
+
+class CartaoVidro(BoxLayout):
+    """Cartão de vidro (o desenho está no .kv). As propriedades nascem aqui, com valor
+    inicial, porque o canvas do .kv é montado ANTES dos valores padrão do próprio .kv."""
+    raio = NumericProperty(dp(28))
+
+
+class BotaoRedondo(ButtonBehavior, Widget):
+    """Botão redondo com ícone. estilo: "vidro", "destaque", "cheio" ou "limpo"."""
+    icone = StringProperty("")
+    tam_icone = NumericProperty(dp(22))
+    estilo = StringProperty("vidro")
+    tinta = ListProperty([1, 1, 1, 1])
+
+
+class RaizSegura(BoxLayout):
+    """
+    Raiz do app. Reserva o espaço das barras do sistema (status/navegação):
+    no Android 15+ o app é desenhado ATRÁS delas, e o topo ficava sobreposto.
+    Também desenha o degradê colorido do player (cor tirada da capa).
+    """
+    alfa_fundo = NumericProperty(0)
+
+    def __init__(self, gerenciador, **kwargs):
+        kwargs.setdefault("orientation", "vertical")
+        super().__init__(**kwargs)
+        self.gerenciador = gerenciador
+        self.add_widget(gerenciador)
+        gerenciador.bind(current=self._ao_trocar_tela)
+
+    # Atalhos: o resto do app continua usando self.root.current/get_screen/transition
+    @property
+    def current(self):
+        return self.gerenciador.current
+
+    @current.setter
+    def current(self, valor):
+        self.gerenciador.current = valor
+
+    @property
+    def transition(self):
+        return self.gerenciador.transition
+
+    def get_screen(self, nome):
+        return self.gerenciador.get_screen(nome)
+
+    def _ao_trocar_tela(self, _gerenciador, tela):
+        Animation(alfa_fundo=.62 if tela in ("player", "letra") else 0,
+                  duration=.4, t="out_quad").start(self)
+
+
+def _degrade_vertical():
+    """Textura 1x2 (opaca em cima, transparente embaixo); a GPU interpola o meio."""
+    textura = Texture.create(size=(1, 2), colorfmt="rgba")
+    textura.blit_buffer(bytes([255, 255, 255, 0, 255, 255, 255, 255]), colorfmt="rgba", bufferfmt="ubyte")
+    textura.mag_filter = "linear"
+    textura.min_filter = "linear"
+    return textura
+
+
+def _tex_orb(n=96):
+    """Mancha de luz: círculo branco que esmaece nas bordas (a cor vem do Color do .kv)."""
+    c = (n - 1) / 2
+    dados = bytearray()
+    for y in range(n):
+        for x in range(n):
+            d = min(1.0, (((x - c) ** 2 + (y - c) ** 2) ** 0.5) / c)
+            a = 1.0 - d
+            a = a * a * (3 - 2 * a)
+            dados += bytes((255, 255, 255, int(255 * a)))
+    textura = Texture.create(size=(n, n), colorfmt="rgba")
+    textura.blit_buffer(bytes(dados), colorfmt="rgba", bufferfmt="ubyte")
+    textura.mag_filter = "linear"
+    textura.min_filter = "linear"
+    return textura
+
+
+_PIXELS = {}   # caminho -> bytes RGBA da imagem inteira (cache curto, p/ recortar sem esticar)
+
+
+def _pixels_de(caminho, textura):
+    achado = _PIXELS.get(caminho)
+    if achado is None:
+        if len(_PIXELS) >= 12:
+            _PIXELS.pop(next(iter(_PIXELS)))
+        achado = textura.pixels
+        _PIXELS[caminho] = achado
+    return achado
+
+
+def _cor_dominante(textura):
+    """Cor média da capa (amostrando ~400 pixels), ajustada para um fundo agradável."""
+    dados = textura.pixels
+    largura, altura = textura.size
+    passo = max(1, (largura * altura) // 400)
+    r = g = b = n = 0
+    for i in range(0, len(dados) - 3, 4 * passo):
+        r += dados[i]; g += dados[i + 1]; b += dados[i + 2]; n += 1
+    if not n:
+        return [.12, .12, .12, 1]
+    r, g, b = r / n / 255, g / n / 255, b / n / 255
+    maior = max(r, g, b, .01)
+    fator = .6 / maior if maior > .6 else (.32 / maior if maior < .32 else 1)
+    return [min(1, r * fator), min(1, g * fator), min(1, b * fator), 1]
 
 
 class BarraProgresso(Widget):
@@ -1231,7 +1416,272 @@ class TelaPlaylist(Screen):
 
 
 class TelaPlayer(Screen):
-    pass  # tudo vem do "app" (veja o main.kv)
+    """
+    Player. Além do que vem do "app" (veja o main.kv), cuida da LETRA:
+      - letra_linha: só a linha cantada agora (letras sincronizadas), mostrada
+        entre o artista e a barra de progresso;
+      - letra_a2..letra_p2: duas linhas antes, a atual e duas depois, para o
+        cartão "Prévia da letra". Letras sem tempo mostram só o começo.
+    """
+    letra_tem = BooleanProperty(False)
+    letra_sincronizada = BooleanProperty(False)
+    letra_msg = StringProperty("")
+    letra_linha = StringProperty("")
+    letra_a2 = StringProperty("")
+    letra_a1 = StringProperty("")
+    letra_atual = StringProperty("")
+    letra_p1 = StringProperty("")
+    letra_p2 = StringProperty("")
+    letra_alfa = NumericProperty(1)  # pisca de leve quando a linha troca
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._id = None
+        self._linhas, self._tempos = [], []
+        self._indice = -2
+        self._relogio = None
+
+    def on_pre_enter(self, *args):
+        self._carregar()  # relê o arquivo (a letra pode ter sido baixada na tela de letras)
+
+    def on_enter(self, *args):
+        if self._relogio is None:
+            self._relogio = Clock.schedule_interval(self._tick, .25)
+
+    def on_leave(self, *args):
+        if self._relogio is not None:
+            self._relogio.cancel()
+            self._relogio = None
+
+    def _carregar(self):
+        app = App.get_running_app()
+        musica = app.musica_tocando or {}
+        self._id = app.id_atual
+        self._linhas, self._tempos, self._indice = [], [], -2
+        self.letra_tem = self.letra_sincronizada = False
+        self.letra_linha = self.letra_a2 = self.letra_a1 = ""
+        self.letra_atual = self.letra_p1 = self.letra_p2 = ""
+        arquivo = None
+        if musica:
+            try:  # mesmas pastas da tela de letras (ela só usa o "app" e globais)
+                arquivo = letras.achar_letra(musica, TelaLetra._pastas(self, musica))
+            except Exception as erro:
+                trilha(f"prévia da letra: busca falhou {erro!r}")
+        if arquivo is None:
+            self.letra_msg = "Esta música ainda não tem letra no aparelho."
+            return
+        try:
+            linhas, sincronizada = letras.parse_lrc(
+                arquivo.read_text(encoding="utf-8", errors="replace"))
+        except Exception as erro:
+            trilha(f"prévia da letra ilegível {arquivo}: {erro!r}")
+            linhas = []
+        if not linhas:
+            self.letra_msg = "O arquivo de letra está vazio."
+            return
+        self._tempos = [t for t, _ in linhas]
+        self._linhas = [texto for _, texto in linhas]
+        self.letra_sincronizada = sincronizada
+        self.letra_msg = ""
+        self.letra_tem = True
+        self._mostrar(-1 if sincronizada else 2)  # sem tempo: mostra as 5 primeiras linhas
+        self._tick(0)
+
+    def _mostrar(self, i):
+        def linha(k):
+            return self._linhas[k] if 0 <= k < len(self._linhas) else ""
+        self.letra_a2, self.letra_a1 = linha(i - 2), linha(i - 1)
+        self.letra_atual = linha(i) if i >= 0 else ("• • •" if self.letra_sincronizada else "")
+        self.letra_p1, self.letra_p2 = linha(i + 1), linha(i + 2)
+        self.letra_linha = linha(i) if (self.letra_sincronizada and i >= 0) else ""
+
+    def _tick(self, _dt):
+        app = App.get_running_app()
+        if app.id_atual != self._id:            # a faixa mudou com o player aberto
+            self._carregar()
+            return
+        if not (self.letra_tem and self.letra_sincronizada):
+            return
+        indice = letras.indice_atual(self._tempos, app.posicao)
+        if indice == self._indice:
+            return
+        self._indice = indice
+        self._mostrar(indice)
+        Animation.cancel_all(self, "letra_alfa")
+        self.letra_alfa = .3
+        Animation(letra_alfa=1, duration=.35, t="out_quad").start(self)
+
+
+class LinhaLetra(ButtonBehavior, Label):
+    """Uma linha da letra. 'brilho' (animado) controla o destaque; tocar pula para o trecho."""
+    tempo = NumericProperty(0)
+    brilho = NumericProperty(.35)
+    sincronizada = BooleanProperty(False)
+
+    def on_release(self):
+        app = App.get_running_app()
+        if self.sincronizada and app.duracao:
+            app.buscar(min(1, max(0, self.tempo / app.duracao)))
+
+
+class TelaLetra(Screen):
+    """Letra da música que está tocando, rolando e destacando a linha atual (estilo Spotify)."""
+    titulo = StringProperty("")
+    artista = StringProperty("")
+    mensagem = StringProperty("")
+    tem_letra = BooleanProperty(False)
+    buscando = BooleanProperty(False)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._linhas, self._tempos = [], []
+        self._sincronizada = False
+        self._indice = -2
+        self._id = None
+        self._relogio = None
+
+    # ---- ciclo de vida
+    def on_pre_enter(self, *args):
+        self.carregar()
+
+    def on_enter(self, *args):
+        if self._relogio is None:
+            self._relogio = Clock.schedule_interval(self._tick, .2)
+        # Tela já com tamanho final: recentraliza na linha atual sem animar.
+        self._indice = -2
+        Clock.schedule_once(lambda dt: self._tick(0, animar=False), .1)
+
+    def on_leave(self, *args):
+        if self._relogio is not None:
+            self._relogio.cancel()
+            self._relogio = None
+
+    # ---- pastas onde a letra pode estar (na ordem de prioridade)
+    def _pastas(self, musica):
+        app = App.get_running_app()
+        pastas = [Path(app.user_data_dir) / "letras"]            # baixadas pelo app
+        arquivo = Path(_caminho(musica.get("arquivo", "")))
+        pastas += [arquivo.parent,                              # .lrc ao lado do áudio
+                   RAIZ / "arquivos" / "letras",
+                   Path(db.BASE_DIR) / "arquivos" / "letras"]   # as que vão dentro do app
+        return pastas
+
+    def carregar(self):
+        app = App.get_running_app()
+        musica = app.musica_tocando or {}
+        self._id = app.id_atual
+        self.titulo = app.titulo_atual
+        self.artista = app.artista_atual
+        self._limpar()
+        arquivo = letras.achar_letra(musica, self._pastas(musica)) if musica else None
+        if arquivo is None:
+            self.mensagem = ("Esta música ainda não tem letra no aparelho.\n"
+                             "Toque em buscar para baixar (usa internet só desta vez).")
+            return
+        try:
+            linhas, sincronizada = letras.parse_lrc(arquivo.read_text(encoding="utf-8", errors="replace"))
+        except Exception as erro:
+            trilha(f"letra ilegível {arquivo}: {erro!r}")
+            linhas = []
+        if not linhas:
+            self.mensagem = "O arquivo de letra está vazio."
+            return
+        self._montar(linhas, sincronizada)
+
+    def _limpar(self):
+        caixa = self.ids.caixa
+        caixa.clear_widgets()
+        self._linhas, self._tempos, self._indice = [], [], -2
+        self.tem_letra = False
+
+    def _montar(self, linhas, sincronizada):
+        caixa, rolagem = self.ids.caixa, self.ids.rolagem
+        topo = Widget(size_hint_y=None, height=rolagem.height * .35)
+        base = Widget(size_hint_y=None, height=rolagem.height * .55)
+        rolagem.bind(height=lambda _w, h: (setattr(topo, "height", h * .35), setattr(base, "height", h * .55)))
+        caixa.add_widget(topo)
+        for tempo, texto in linhas:
+            linha = LinhaLetra(text=texto, tempo=tempo, sincronizada=sincronizada,
+                               brilho=.35 if sincronizada else .85)
+            self._linhas.append(linha)
+            caixa.add_widget(linha)
+        caixa.add_widget(base)
+        self._tempos = [t for t, _ in linhas]
+        self._sincronizada = sincronizada
+        self.tem_letra = True
+        rolagem.scroll_y = 1
+        Clock.schedule_once(lambda dt: self._tick(0, animar=False), .05)
+
+    # ---- acompanhar a música
+    def _tick(self, _dt, animar=True):
+        app = App.get_running_app()
+        if app.id_atual != self._id:                 # trocou de faixa com a tela aberta
+            self.carregar()
+            return
+        if not (self.tem_letra and self._sincronizada):
+            return
+        indice = letras.indice_atual(self._tempos, app.posicao)
+        if indice == self._indice:
+            return
+        self._indice = indice
+        for i, linha in enumerate(self._linhas):
+            distancia = abs(i - indice)
+            alvo = 1 if distancia == 0 else (.55 if distancia == 1 else .32)
+            Animation.cancel_all(linha, "brilho")
+            Animation(brilho=alvo, duration=.3 if animar else 0, t="out_quad").start(linha)
+        if indice >= 0:
+            self._centralizar(indice, animar)
+
+    def _centralizar(self, indice, animar=True):
+        rolagem, caixa = self.ids.rolagem, self.ids.caixa
+        altura, visivel = caixa.height, rolagem.height
+        if altura <= visivel:
+            return
+        linha = self._linhas[indice]
+        do_topo = altura - (linha.center_y - caixa.y)
+        deslocamento = min(max(do_topo - visivel / 2, 0), altura - visivel)
+        alvo = 1 - deslocamento / (altura - visivel)
+        Animation.cancel_all(rolagem, "scroll_y")
+        if animar:
+            Animation(scroll_y=alvo, duration=.45, t="out_cubic").start(rolagem)
+        else:
+            rolagem.scroll_y = alvo
+
+    # ---- baixar a letra (uma vez; depois fica salva no aparelho)
+    def buscar_online(self):
+        app = App.get_running_app()
+        musica = dict(app.musica_tocando or {})
+        if self.buscando or not musica:
+            return
+        self.buscando = True
+        self.mensagem = "Buscando letra…"
+
+        def trabalho():
+            texto, erro = None, ""
+            try:
+                texto, _ = letras.buscar_online(
+                    musica.get("titulo", ""), musica.get("artista", ""),
+                    musica.get("album", ""), musica.get("duracao_seg") or app.duracao)
+            except Exception as falha:
+                trilha(f"busca de letra falhou: {falha!r}")
+                erro = "Sem conexão com a internet (ou o serviço está fora do ar)."
+            Clock.schedule_once(lambda dt: self._fim_busca(musica, texto, erro))
+
+        threading.Thread(target=trabalho, daemon=True).start()
+
+    def _fim_busca(self, musica, texto, erro):
+        self.buscando = False
+        if texto:
+            try:
+                letras.salvar(texto, Path(App.get_running_app().user_data_dir) / "letras", musica)
+            except Exception as falha:
+                trilha(f"não consegui salvar a letra: {falha!r}")
+                self.mensagem = "Achei a letra, mas não consegui salvar no aparelho."
+                return
+            if App.get_running_app().id_atual == self._id:
+                self.carregar()
+        else:
+            self.mensagem = erro or "Não encontrei a letra desta música no LRCLIB."
 
 
 class TelaFila(Screen):
@@ -1266,6 +1716,40 @@ class MainApp(App):
     titulo_atual = StringProperty("")
     artista_atual = StringProperty("")
     capa_atual = StringProperty("")
+    cor_capa = ListProperty([.12, .12, .12, 1])
+    gradiente = ObjectProperty(None)
+    tex_orb = ObjectProperty(None, allownone=True)
+
+    def on_capa_atual(self, _instancia, caminho):
+        """Troca suave da cor de fundo do player conforme a capa."""
+        alvo = [.12, .12, .12, 1]
+        try:
+            achado = resource_find(caminho) if caminho else None
+            if achado:
+                alvo = _cor_dominante(_textura_compartilhada(achado))
+        except Exception as erro:
+            trilha(f"cor da capa indisponível: {erro!r}")
+        Animation(cor_capa=alvo, duration=.7, t="out_quad").start(self)
+
+    def _atualizar_insets(self, *_):
+        """Android 15+ (edge-to-edge): afasta o conteúdo das barras do sistema."""
+        if platform != "android" or not isinstance(self.root, RaizSegura):
+            return
+        try:
+            from jnius import autoclass
+            sdk = int(autoclass("android.os.Build$VERSION").SDK_INT)
+            if sdk < 35:
+                return  # antes do Android 15 o conteúdo já fica fora das barras
+            atividade = autoclass("org.kivy.android.PythonActivity").mActivity
+            insets = atividade.getWindow().getDecorView().getRootWindowInsets()
+            if insets is None:
+                Clock.schedule_once(self._atualizar_insets, .4)
+                return
+            Tipo = autoclass("android.view.WindowInsets$Type")
+            barras = insets.getInsets(Tipo.systemBars() | Tipo.displayCutout())
+            self.root.padding = [0, int(barras.top), 0, int(barras.bottom)]
+        except Exception as erro:
+            trilha(f"não consegui medir as barras do sistema: {erro!r}")
     origem = StringProperty("")           # nome da playlist que está tocando
     tem_musica = BooleanProperty(False)   # False = esconde o mini player
     tocando = BooleanProperty(False)      # True = tocando, False = pausado
@@ -1297,6 +1781,16 @@ class MainApp(App):
         self._ultima_gravacao_segundos = 0
         self._servico_audio_ativo = False
         self.pilha = []          # telas por onde passamos (para o botão voltar)
+
+    def on_tocando(self, _app, tocando):
+        """A capa do player 'respira': encolhe suave ao pausar e volta ao tocar."""
+        try:
+            capa = self.root.get_screen("player").ids.capa_player
+            Animation.cancel_all(capa, "escala")
+            Animation(escala=1 if tocando else .86, duration=.45,
+                      t="out_back" if tocando else "out_cubic").start(capa)
+        except Exception:
+            pass  # a tela do player ainda não existe: sem animação, sem problema
 
     def build(self):
         if platform == "android":
@@ -1332,13 +1826,18 @@ class MainApp(App):
                              (TelaEstatisticas, "estatisticas"),
                              (TelaPlaylist, "playlist"),
                              (TelaPlayer, "player"), (TelaFila, "fila"),
-                             (TelaArtistas, "artistas"), (TelaArtista, "artista"),
+                             (TelaArtistas, "artistas"), (TelaArtista, "artista"), (TelaLetra, "letra"),
                              (TelaAlbum, "album")):
             gerenciador.add_widget(classe(name=nome))
         Window.bind(on_keyboard=self._tecla)
         # O Android avisa quando está ficando sem memória (logo antes de matar apps).
         Window.bind(on_memorywarning=lambda *a: trilha("!!! AVISO DE MEMÓRIA BAIXA do sistema"))
-        return gerenciador  # o "root" do app
+        self.gradiente = _degrade_vertical()
+        self.tex_orb = _tex_orb()
+        raiz = RaizSegura(gerenciador)
+        Window.bind(size=lambda *a: Clock.schedule_once(self._atualizar_insets, .1))
+        Clock.schedule_once(self._atualizar_insets, .2)
+        return raiz  # o "root" do app
 
     def _importar_se_mudou(self):
         """Só reimporta o biblioteca.py quando ele mudou (abertura bem mais rápida)."""
@@ -1521,6 +2020,7 @@ class MainApp(App):
 
     def on_resume(self):
         trilha("on_resume (app voltou)")
+        Clock.schedule_once(self._atualizar_insets, .1)
         self._sincronizar_estado_android()
 
     def _iniciar_servico_audio(self):

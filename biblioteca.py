@@ -657,7 +657,77 @@ musicas = {
         'generos': ['rock', 'metal'],
         'arquivo': 'arquivos/musicas/depois_da_guerra.mp3',
         'capa': 'arquivos/capas_de_album/ddg.jpg'
-    }
+    },
+
+    67: {
+        'titulo': 'Simples',
+        'artista': 'Oficina G3',
+        'album': 'Humanos',
+        'ano': 2002,
+        'generos': ['rock'],
+        'arquivo': 'arquivos/musicas/simples.mp3',
+        'capa': 'arquivos/capas_de_album/humanos.jpg'
+    },
+
+    68: {
+        'titulo': 'Davi',
+        'artista': 'Oficina G3',
+        'album': 'Indiferença',
+        'ano': 1996,
+        'generos': ['rock', 'metal'],
+        'arquivo': 'arquivos/musicas/davi.mp3',
+        'capa': 'arquivos/capas_de_album/indiferenca.jpg'
+    },
+
+    69: {
+        'titulo': 'Indiferença',
+        'artista': 'Oficina G3',
+        'album': 'Indiferença',
+        'ano': 1996,
+        'generos': ['rock'],
+        'arquivo': 'arquivos/musicas/indiferenca.mp3',
+        'capa': 'arquivos/capas_de_album/indiferenca.jpg'
+    },
+
+    70: {
+        'titulo': 'Pastor',
+        'artista': 'Oficina G3',
+        'album': 'Nada É Tão Novo, Nada É Tão Velho',
+        'ano': 1993,
+        'generos': ['rock'],
+        'arquivo': 'arquivos/musicas/pastor.mp3',
+        'capa': 'arquivos/capas_de_album/nada_e_tao_novo.jpg'
+    },
+
+    71: {
+        'titulo': 'Minha Luta',
+        'artista': 'Oficina G3',
+        'album': 'Humanos',
+        'ano': 2002,
+        'generos': ['rock'],
+        'arquivo': 'arquivos/musicas/minha_luta.mp3',
+        'capa': 'arquivos/capas_de_album/humanos.jpg'
+    },
+
+    72: {
+        'titulo': 'Brasil',
+        'artista': 'Oficina G3',
+        'album': 'O Tempo',
+        'ano': 2000,
+        'generos': ['rock'],
+        'arquivo': 'arquivos/musicas/brasil.mp3',
+        'capa': 'arquivos/capas_de_album/o_tempo.jpg'
+    },
+
+    73: {
+        'titulo': 'Descanso',
+        'artista': 'Oficina G3',
+        'album': 'Histórias e Bicicletas (Reflexões, Encontros e Esperança)',
+        'ano': 2013,
+        'generos': ['rock'],
+        'arquivo': 'arquivos/musicas/descanso.mp3',
+        'capa': 'arquivos/capas_de_album/historias_e_bicicletas.jpg'
+    },
 }
 
 # ======================================================================
