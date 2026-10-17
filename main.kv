@@ -944,9 +944,81 @@
 # ======================================================================
 # TELA DE CADASTRO E LOGIN
 # ======================================================================
+<SaveModal>:
+    size_hint: .9, None
+    height: dp(400)
+    auto_dismiss: True
+    background: ""
+    background_color: 0, 0, 0, 0
+    BoxLayout:
+        orientation: "vertical"
+        padding: dp(20)
+        spacing: dp(10)
+        canvas.before:
+            Color:
+                rgba: (.12, .12, .12, 1)
+            RoundedRectangle:
+                pos: self.pos
+                size: self.size
+                radius: [dp(22)]
+        Label:
+            text: "Arquivo de save"
+            font_name: "DMSansMedium"
+            font_size: "20sp"
+            size_hint_y: None
+            height: dp(34)
+        Label:
+            text: "Escolha uma pasta em Documentos ou Downloads. O app guarda o save nela e atualiza o arquivo automaticamente."
+            color: COR_CINZA
+            font_size: "13sp"
+            halign: "center"
+            valign: "middle"
+            text_size: self.width, None
+            size_hint_y: None
+            height: dp(54)
+        Label:
+            text: "O arquivo inclui conta e histórico. Guarde-o em uma pasta privada."
+            color: COR_CINZA
+            font_size: "11sp"
+            halign: "center"
+            valign: "middle"
+            text_size: self.width, None
+            size_hint_y: None
+            height: dp(30)
+        Button:
+            text: "Escolher pasta para o save"
+            size_hint_y: None
+            height: dp(48)
+            background_normal: ""
+            background_color: (.28, .28, .28, 1)
+            on_release: app.criar_save_file()
+        Button:
+            text: "Restaurar save de uma pasta"
+            size_hint_y: None
+            height: dp(48)
+            background_normal: ""
+            background_color: (.28, .28, .28, 1)
+            on_release: app.restaurar_save_file()
+        Label:
+            text: app.save_status
+            color: COR_CINZA
+            font_size: "12sp"
+            halign: "center"
+            valign: "middle"
+            text_size: self.width, None
+            size_hint_y: None
+            height: dp(48)
+        Button:
+            text: "Fechar"
+            size_hint_y: None
+            height: dp(42)
+            background_normal: ""
+            background_color: (0, 0, 0, 0)
+            on_release: root.dismiss()
+
 <PerfilModal>:
     size_hint: .82, None
-    height: dp(300)
+    height: dp(395)
     auto_dismiss: True
     background: ""
     background_color: 0, 0, 0, 0
@@ -978,6 +1050,13 @@
             background_normal: ""
             background_color: (.28, .28, .28, 1)
             on_release: app.abrir_seletor_foto_perfil()
+        Button:
+            text: "Backup e restauração"
+            size_hint_y: None
+            height: dp(44)
+            background_normal: ""
+            background_color: (.28, .28, .28, 1)
+            on_release: app.abrir_salvamento()
         Button:
             text: "Sair da conta"
             size_hint_y: None
@@ -1175,6 +1254,23 @@
                     background_normal: ""
                     background_color: (.28, .28, .28, 1)
                     on_release: app.cadastrar_usuario() if root.modo_cadastro else app.entrar_usuario()
+
+                Button:
+                    text: "Backup e restauração"
+                    size_hint_y: None
+                    height: dp(42)
+                    background_normal: ""
+                    background_color: (0, 0, 0, 0)
+                    color: COR_CINZA
+                    on_release: app.abrir_salvamento()
+                Label:
+                    text: app.save_status
+                    color: COR_CINZA
+                    font_size: "11sp"
+                    halign: "center"
+                    text_size: self.size
+                    size_hint_y: None
+                    height: dp(28)
 
                 Widget:
                     size_hint_y: None

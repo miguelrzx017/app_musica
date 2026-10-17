@@ -1,2 +1,3 @@
 [    0.00s |    0 MB] app iniciando
-[   70.99s |    0 MB] on_stop (app encerrando normalmente)
+[    2.77s |    0 MB] save: sem save anterior
+[   10.70s |    0 MB] on_stop (app encerrando normalmente)

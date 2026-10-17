@@ -11,7 +11,7 @@ O notebook gera um APK de depuração para instalação direta e teste. Para pub
 - Android 7.0 (API 24) ou superior.
 - Arquiteturas ARM de 32 e 64 bits (`armeabi-v7a` e `arm64-v8a`).
 - O projeto usa Android API 36 como alvo.
-- A versão do aplicativo nesta atualização é `1.0.5`; o identificador continua `org.miguelribeiro.mymusicgospel`.
+- A versão do aplicativo nesta atualização é `1.2.3`; o identificador continua `org.miguelribeiro.mymusicgospel`.
 - A versão 1.0.5 desativa o renderizador HWUI do Android apenas na activity Kivy como mitigação para o mutex destruído registrado no Android 16. A interface do Kivy continua usando a superfície SDL/OpenGL.
 - As imagens mantêm os arquivos atuais sem nova compressão ou redimensionamento nesta atualização.
 - O APK e o ZIP não incluem MP3. No aparelho, coloque as músicas em `Armazenamento interno/Music/AppMusica/arquivos/musicas/`.
@@ -22,3 +22,11 @@ Se o app ainda fechar ao abrir e você não tiver ADB, siga [as instruções par
 ## Música e estatísticas
 
 No Android, o Media3 mantém a reprodução em segundo plano. As estatísticas contam uma reprodução depois de pelo menos 60 segundos efetivamente ouvidos. Arquivos de música e banco local ficam no dispositivo.
+
+## Arquivo de save no celular
+
+Na tela de login ou no perfil, abra **Backup e restauração** e escolha uma pasta em Documentos ou Downloads. O app grava nela o arquivo `MyMusicGospel.mmsave` e o atualiza automaticamente com contas, sessão, estatísticas, playlists, favoritos, músicas adicionadas, capas, fotos de perfil e letras baixadas.
+
+Se instalar o app novamente e os dados locais tiverem sido apagados, use **Restaurar save de uma pasta** na tela de login e selecione a pasta escolhida anteriormente. A permissão de acesso fica no app; após uma desinstalação, selecione a pasta de novo para restaurar e reativar o save automático.
+
+O notebook gera APKs de depuração em ambientes Colab novos. Se a chave de assinatura mudar, o Android exige remover a versão anterior antes de instalar a nova; nesse caso, restaure o arquivo `.mmsave` depois da instalação. Para atualizações diretas sem reinstalação, use sempre uma assinatura de lançamento persistente.

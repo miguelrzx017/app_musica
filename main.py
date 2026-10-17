@@ -61,6 +61,16 @@ def _memoria_mb():
     return 0
 
 
+def _salvaguarda(funcao, *args):
+    """Roda uma etapa do save; se falhar, só registra (o app nunca deve cair por causa dele)."""
+    try:
+        resultado = funcao(*args)
+        if isinstance(resultado, str) and resultado:
+            trilha(f"save: {resultado}")
+    except Exception as erro:
+        trilha(f"save: {funcao.__name__} falhou: {erro!r}")
+
+
 def trilha(texto):
     linha = f"[{time.time() - _T_INICIO:8.2f}s | {_memoria_mb():4d} MB] {texto}"
     print("TRILHA", linha, flush=True)
@@ -123,6 +133,7 @@ from kivy.uix.widget import Widget
 from kivy.utils import escape_markup, platform
 
 import db
+import salvamento
 import fila
 import letras
 from auth import AuthStore
@@ -1915,6 +1926,7 @@ class MainApp(App):
     capa_atual = StringProperty("")
     cor_capa = ListProperty([.12, .12, .12, 1])
     gradiente = ObjectProperty(None)
+    save_status = StringProperty("Save automático ativo")   # texto do menu (main.kv)
     favoritos = ListProperty([])   # ids das músicas favoritas (o .kv reage a mudanças)
     tex_orb = ObjectProperty(None, allownone=True)
 
@@ -2009,13 +2021,18 @@ class MainApp(App):
             request_permissions(permissoes, self._permissoes_respondidas)
             preparar_banco(self.user_data_dir)
 
+        # SAVE SEPARADO (ver salvamento.py): contas, estatísticas, favoritos e músicas
+        # adicionadas ficam num save próprio, que uma atualização/reinstalação não apaga.
+        _salvaguarda(salvamento.restaurar_arquivos, self.user_data_dir)
+        _salvaguarda(salvamento.snapshot_antes_de_atualizar, self.user_data_dir)
         db.criar_banco()
+        # Atualiza o catálogo em instalações que já tinham um banco persistente.
+        self._importar_se_mudou()
+        _salvaguarda(salvamento.restaurar_dados, self.user_data_dir)
         try:
             self.favoritos = ids_favoritos()
         except Exception as erro:
             trilha(f"favoritos: não consegui carregar: {erro!r}")
-        # Atualiza o catálogo em instalações que já tinham um banco persistente.
-        self._importar_se_mudou()
         db.limpar_historico_vazio()
         try:
             db.preencher_duracoes_vazias(_caminho)
@@ -2194,6 +2211,7 @@ class MainApp(App):
         for p in self.playlists:
             if p["id"] == playlist_id:
                 self.root.get_screen("playlist").carregar(p)
+        self._agendar_save()
         return ""
 
     def abrir_estatisticas(self):
@@ -2217,10 +2235,30 @@ class MainApp(App):
         if tela.nome_playlist:
             tela.capa_playlist = capa_da_playlist(tela.nome_playlist)
 
+    def _salvar_dados(self, *_):
+        """Grava o save separado (rápido: só reescreve se algo mudou)."""
+        _salvaguarda(salvamento.exportar, self.user_data_dir)
+        self.save_status = "Último save: " + time.strftime("%H:%M")
+
+    def abrir_salvamento(self):
+        """Botão do menu: salva agora e mostra onde o save está."""
+        self._salvar_dados()
+        destino = "cópia também em Documents/MyMusicGospel" if salvamento.pasta_publica() else "guardado no app"
+        self.save_status = f"Salvo às {time.strftime('%H:%M')} · {destino}"
+
+    def _agendar_save(self):
+        Clock.unschedule(self._salvar_dados)
+        Clock.schedule_once(self._salvar_dados, 4)
+
     def on_start(self):
         self.playlists = listar_playlists()
         self.root.get_screen("menu").montar(self.playlists)
-        self.root.get_screen("artistas").montar()
+        try:
+            self.root.get_screen("artistas").montar()
+        except Exception as erro:       # uma tela com problema não pode derrubar o app inteiro
+            trilha(f"artistas: não consegui montar: {erro!r}")
+        Clock.schedule_interval(lambda dt: self._salvar_dados(), 120)   # lambda: o unschedule do _agendar_save não pode cancelar este
+        self._agendar_save()
         usuario = self.auth_store.usuario_da_sessao()
         if usuario:
             self.usuario_atual = usuario
@@ -2230,6 +2268,7 @@ class MainApp(App):
 
     def on_pause(self):
         trilha("on_pause (app foi para segundo plano / tela bloqueada)")
+        self._salvar_dados()
         if self.carregado and self.tocando:
             self._salvar_progresso_estatistica(self.motor.posicao())
             # No Android, o MediaSessionService já é dono do áudio e da fila.
@@ -2317,6 +2356,7 @@ class MainApp(App):
         atuais = set(self.favoritos)
         (atuais.add if ficou else atuais.discard)(id_musica)
         self.favoritos = sorted(atuais)
+        self._agendar_save()
         try:    # com "favoritos em cima" ligado a lista precisa se reordenar
             tela = self.root.get_screen("playlist")
             if tela.favoritos_em_cima:
@@ -2730,6 +2770,7 @@ class MainApp(App):
     def on_stop(self):
         self._parar_servico_audio()
         trilha("on_stop (app encerrando normalmente)")
+        self._salvar_dados()
         if platform == "android":
             # Fechar a Activity não deve destruir o player que vive no serviço.
             return
