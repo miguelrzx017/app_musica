@@ -105,6 +105,13 @@ ESQUEMA = """
         FOREIGN KEY (musica_id) REFERENCES musicas(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS favoritos (
+        musica_id     INTEGER PRIMARY KEY,
+        favoritada_em TEXT NOT NULL DEFAULT (datetime('now')),
+
+        FOREIGN KEY (musica_id) REFERENCES musicas(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_musicas_artista   ON musicas(artista_id);
     CREATE INDEX IF NOT EXISTS idx_musicas_album     ON musicas(album_id);
     CREATE INDEX IF NOT EXISTS idx_albuns_artista    ON albuns(artista_id);
@@ -806,6 +813,24 @@ def adicionar_a_playlist(playlist_id, musica_id):
             FROM playlist_musicas WHERE playlist_id = ?
         """, (playlist_id, musica_id, playlist_id))
         return cursor.rowcount == 1
+
+
+def ids_favoritos():
+    """Ids das músicas favoritas (lista de inteiros)."""
+    with conexao() as con:
+        return [linha[0] for linha in con.execute(
+            "SELECT musica_id FROM favoritos ORDER BY favoritada_em")]
+
+
+def alternar_favorito(musica_id):
+    """Favorita/desfavorita. Devolve True se a música ficou favorita."""
+    with conexao() as con:
+        apagou = con.execute(
+            "DELETE FROM favoritos WHERE musica_id = ?", (musica_id,)).rowcount
+        if apagou:
+            return False
+        con.execute("INSERT OR IGNORE INTO favoritos (musica_id) VALUES (?)", (musica_id,))
+        return True
 
 
 def musicas_da_playlist(playlist_id):

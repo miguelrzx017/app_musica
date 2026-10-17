@@ -96,10 +96,11 @@
             pos: self.center_x - self.tam_icone / 2, self.center_y - self.tam_icone / 2
             size: self.tam_icone, self.tam_icone
 
-# Três pontinhos na vertical (só visual; o toque passa para a linha).
-<IconeMais@Widget>:
+# Três pontinhos na vertical: abre o menu da música.
+<BotaoMais@ButtonBehavior+Widget>:
     size_hint: None, None
-    size: dp(30), dp(30)
+    size: dp(40), dp(56)
+    opacity: .6 if self.state == "down" else 1
     canvas:
         Color:
             rgba: 1, 1, 1, .6
@@ -114,6 +115,136 @@
             size: dp(3.6), dp(3.6)
 
 # ======================================================================
+# FILTROS E MENU DA MÚSICA
+# ======================================================================
+# Pílula de vidro clicável (ativa = contorno vermelho).
+<ChipVidro>:
+    padding: dp(12), 0
+    spacing: dp(6)
+    opacity: (.45 if self.esmaecido else 1) * (.7 if self.state == "down" else 1)
+    canvas.before:
+        Color:
+            rgba: (1, .27, .3, .26) if self.ativo else (1, 1, 1, .09)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(20)]
+        Color:
+            rgba: (1, .27, .3, .8) if self.ativo else (1, 1, 1, .2)
+        Line:
+            rounded_rectangle: self.x, self.y, self.width, self.height, dp(20)
+            width: dp(1)
+    Image:
+        source: root.icone
+        size_hint_x: None
+        width: dp(16) if root.icone else 0
+        opacity: 1 if root.icone else 0
+        color: (1, .5, .52, 1) if root.ativo else (1, 1, 1, .85)
+    Texto:
+        text: root.texto
+        font_name: "DMSansMedium"
+        font_size: "13sp"
+        halign: "center"
+        valign: "middle"
+        shorten: True
+
+<LinhaAcaoMenu>:
+    size_hint_y: None
+    height: dp(56)
+    padding: dp(16), dp(8)
+    spacing: dp(14)
+    opacity: .7 if self.state == "down" else 1
+    canvas.before:
+        Color:
+            rgba: 1, 1, 1, .08
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(18)]
+    Image:
+        source: root.icone
+        size_hint: None, None
+        size: dp(24), dp(24)
+        pos_hint: {"center_y": .5}
+        color: root.tinta
+    Texto:
+        text: root.texto
+        font_name: "DMSansMedium"
+        font_size: "16sp"
+        valign: "middle"
+
+<MenuMusica>:
+    size_hint: .9, None
+    height: dp(164) + (dp(62) if root.do_player else 0)
+    auto_dismiss: True
+    background: ""
+    background_color: 0, 0, 0, 0
+    overlay_color: 0, 0, 0, .6
+    BoxLayout:
+        orientation: "vertical"
+        padding: dp(16), dp(14), dp(16), dp(14)
+        spacing: dp(6)
+        canvas.before:
+            Color:
+                rgba: .09, .08, .12, .97
+            RoundedRectangle:
+                pos: self.pos
+                size: self.size
+                radius: [dp(32)]
+            Color:
+                rgba: app.cor_capa[0], app.cor_capa[1], app.cor_capa[2], .22
+            RoundedRectangle:
+                pos: self.pos
+                size: self.size
+                radius: [dp(32)]
+                texture: app.gradiente
+            Color:
+                rgba: 1, 1, 1, .2
+            Line:
+                rounded_rectangle: self.x, self.y, self.width, self.height, dp(32)
+                width: dp(1)
+            Color:
+                rgba: 1, 1, 1, .45
+            Line:
+                points: self.x + dp(32), self.top - dp(.5), self.right - dp(32), self.top - dp(.5)
+                width: dp(1)
+        BoxLayout:
+            size_hint_y: None
+            height: dp(62)
+            spacing: dp(12)
+            ImagemArredondada:
+                size_hint: None, None
+                size: dp(56), dp(56)
+                pos_hint: {"center_y": .5}
+                raio: dp(14)
+                source: root.capa
+            BoxLayout:
+                orientation: "vertical"
+                Texto:
+                    text: root.titulo
+                    font_name: "DMSansMedium"
+                    font_size: "17sp"
+                    valign: "bottom"
+                Texto:
+                    text: root.artista
+                    font_size: "13sp"
+                    valign: "top"
+                    color: COR_CINZA
+        LinhaAcaoMenu:
+            icone: "arquivos/icones/coracao_cheio.png" if root.id_musica in app.favoritos else "arquivos/icones/coracao.png"
+            tinta: (1, .27, .3, 1) if root.id_musica in app.favoritos else (1, 1, 1, .9)
+            texto: "Remover dos favoritos" if root.id_musica in app.favoritos else "Adicionar aos favoritos"
+            on_release: root.favoritar()
+        LinhaAcaoMenu:
+            size_hint_y: None
+            height: dp(56) if root.do_player else 0
+            opacity: 1 if root.do_player else 0
+            disabled: not root.do_player
+            icone: "arquivos/icones/mais.png"
+            texto: "Sobre o artista e a música"
+            on_release: root.ver_sobre()
+
+# ======================================================================
 # PEÇAS REUTILIZÁVEIS
 # ======================================================================
 # "@" cria um widget novo combinando comportamentos.
@@ -122,18 +253,40 @@
     size_hint: None, None
     size: dp(44), dp(44)
 
+<ControleSegmentado>:
+    padding: dp(4)
+    spacing: 0
+    total: max(1, len(self.children))
+    canvas.before:
+        Color:
+            rgba: COR_VIDRO
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [self.height / 2]
+        Color:
+            rgba: COR_BORDA_VIDRO
+        Line:
+            width: dp(0.8)
+            rounded_rectangle: self.x, self.y, self.width, self.height, self.height / 2
+        # A "pílula" que desliza até a opção escolhida
+        Color:
+            rgba: 1, 1, 1, .22
+        RoundedRectangle:
+            pos: self.x + dp(4) + (self.width - dp(8)) / self.total * self.indice, self.y + dp(4)
+            size: (self.width - dp(8)) / self.total, self.height - dp(8)
+            radius: [(self.height - dp(8)) / 2]
+        Color:
+            rgba: 1, 1, 1, .32
+        Line:
+            width: dp(0.9)
+            rounded_rectangle: self.x + dp(4) + (self.width - dp(8)) / self.total * self.indice, self.y + dp(4), (self.width - dp(8)) / self.total, self.height - dp(8), (self.height - dp(8)) / 2
+
 <BotaoSegmentado>:
-    color: COR_BRANCO
+    color: 1, 1, 1, (1 if self.selecionado else .6)
     halign: "center"
     valign: "middle"
     text_size: self.size
-    canvas.before:
-        Color:
-            rgba: (.28, .28, .28, 1) if self.selecionado else (0, 0, 0, 0)
-        RoundedRectangle:
-            pos: self.x + dp(1), self.y + dp(1)
-            size: self.width - dp(2), self.height - dp(2)
-            radius: [dp(17)]
 
 <IconePerfil@ButtonBehavior+Widget>:
     size_hint: None, None
@@ -688,8 +841,16 @@
             font_size: "13sp"
             valign: "top"
             color: COR_CINZA
-    IconeMais:
+    Image:
+        source: "arquivos/icones/coracao_cheio.png"
+        size_hint: None, None
+        size: dp(16), dp(16)
         pos_hint: {"center_y": .5}
+        color: 1, .27, .3, 1
+        opacity: 1 if root.id_musica in app.favoritos else 0
+    BotaoMais:
+        pos_hint: {"center_y": .5}
+        on_release: root.abrir_menu()
 
 # -------- fila ("A Seguir"):  [capa]  Título / Artista   ≡ --------
 <LinhaFila>:
@@ -1056,23 +1217,10 @@
                 size_hint_x: None
                 width: dp(44)
 
-        BoxLayout:
+        ControleSegmentado:
+            id: ctl_aba
             size_hint_y: None
             height: dp(50)
-            padding: dp(4)
-            spacing: dp(3)
-            canvas.before:
-                Color:
-                    rgba: COR_VIDRO
-                RoundedRectangle:
-                    pos: self.pos
-                    size: self.size
-                    radius: [dp(22)]
-                Color:
-                    rgba: COR_BORDA_VIDRO
-                Line:
-                    width: dp(0.8)
-                    rounded_rectangle: self.x, self.y, self.width, self.height, dp(22)
             BotaoSegmentado:
                 text: "Músicas"
                 font_size: "14sp"
@@ -1089,23 +1237,10 @@
                 selecionado: root.aba == "geral"
                 on_release: root.selecionar_aba("geral")
 
-        BoxLayout:
+        ControleSegmentado:
+            id: ctl_periodo
             size_hint_y: None
-            height: dp(48)
-            padding: dp(4)
-            spacing: dp(3)
-            canvas.before:
-                Color:
-                    rgba: COR_VIDRO
-                RoundedRectangle:
-                    pos: self.pos
-                    size: self.size
-                    radius: [dp(22)]
-                Color:
-                    rgba: COR_BORDA_VIDRO
-                Line:
-                    width: dp(0.8)
-                    rounded_rectangle: self.x, self.y, self.width, self.height, dp(22)
+            height: dp(50)
             BotaoSegmentado:
                 text: "Semana"
                 font_size: "13sp"
@@ -1203,28 +1338,63 @@
                     size_hint_y: None
                     height: dp(10)
 
-                # Bloco inteiro clicável: abre a lista de artistas
+                # Cartão de vidro clicável: abre a grade de artistas
                 BotaoCaixa:
                     orientation: "vertical"
                     size_hint_y: None
                     height: self.minimum_height
+                    padding: dp(14)
+                    spacing: dp(4)
                     on_release: app.ir("artistas")
-                    Texto:
-                        text: "Banco de dados"
-                        font_name: "DMSansMedium"
-                        font_size: "17sp"
+                    canvas.before:
+                        Color:
+                            rgba: 1, 1, 1, (.14 if self.state == "down" else .06)
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [dp(30)]
+                        Color:
+                            rgba: 1, 1, 1, .12
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [dp(30)]
+                            texture: app.gradiente
+                        Color:
+                            rgba: 1, 1, 1, .2
+                        Line:
+                            rounded_rectangle: self.x, self.y, self.width, self.height, dp(30)
+                            width: dp(1)
+                        Color:
+                            rgba: 1, 1, 1, .45
+                        Line:
+                            points: self.x + dp(30), self.top - dp(.5), self.right - dp(30), self.top - dp(.5)
+                            width: dp(1)
+                    BoxLayout:
                         size_hint_y: None
-                        height: dp(26)
-                    Subtitulo:
-                        text: "Artistas - albuns"
+                        height: dp(48)
+                        spacing: dp(8)
+                        padding: dp(4), 0, dp(2), 0
+                        BoxLayout:
+                            orientation: "vertical"
+                            Texto:
+                                text: "Artistas"
+                                font_name: "DMSansMedium"
+                                font_size: "20sp"
+                                valign: "bottom"
+                            Subtitulo:
+                                text: "Artistas e álbuns"
+                                valign: "top"
+                        SetaCirculo:
+                            pos_hint: {"center_y": .5}
                     Widget:
                         size_hint_y: None
                         height: dp(4)
                     ImagemArredondada:
                         size_hint_y: None
                         height: dp(157)
-                        raio: dp(24)
-                        source: "arquivos/menu/banco_de_dados.jpg"
+                        raio: dp(22)
+                        source: "arquivos/menu/artistas.jpg"
                 Widget:
                     size_hint_y: None
                     height: dp(10)
@@ -1551,6 +1721,52 @@
             padding: dp(16), dp(12)
             on_text: root.filtrar(self.text)
 
+        # Filtros: ordenar (padrão / música / artista / álbum), direção e favoritos em cima
+        BoxLayout:
+            size_hint_y: None
+            height: dp(40)
+            spacing: dp(8)
+            ChipVidro:
+                size_hint_x: None
+                width: dp(118)
+                texto: "Ordenar"
+                icone: "arquivos/icones/filtro.png"
+                ativo: root.filtros_abertos or root.ordem_por != "padrao"
+                on_release: root.filtros_abertos = not root.filtros_abertos
+            ChipVidro:
+                size_hint_x: None
+                width: dp(86)
+                texto: "A → Z" if root.crescente else "Z → A"
+                esmaecido: root.ordem_por == "padrao"
+                on_release: root.alternar_direcao()
+            ChipVidro:
+                texto: "Favoritos em cima"
+                icone: "arquivos/icones/coracao_cheio.png"
+                ativo: root.favoritos_em_cima
+                on_release: root.alternar_favoritos_em_cima()
+        BoxLayout:
+            size_hint_y: None
+            height: dp(40) if root.filtros_abertos else 0
+            opacity: 1 if root.filtros_abertos else 0
+            disabled: not root.filtros_abertos
+            spacing: dp(8)
+            ChipVidro:
+                texto: "Padrão"
+                ativo: root.ordem_por == "padrao"
+                on_release: root.definir_ordem("padrao")
+            ChipVidro:
+                texto: "Música"
+                ativo: root.ordem_por == "titulo"
+                on_release: root.definir_ordem("titulo")
+            ChipVidro:
+                texto: "Artista"
+                ativo: root.ordem_por == "artista"
+                on_release: root.definir_ordem("artista")
+            ChipVidro:
+                texto: "Álbum"
+                ativo: root.ordem_por == "album"
+                on_release: root.definir_ordem("album")
+
         # A LISTA (dentro de um painel de vidro). RecycleView só cria os widgets que
         # cabem na tela e os "recicla" ao rolar - essencial para listas grandes.
         CartaoVidro:
@@ -1599,13 +1815,14 @@
 # Linha da letra sob o artista: até 2 linhas, alinhada à esquerda, clicável.
 <LinhaDaLetra@ButtonBehavior+Label>:
     size_hint_y: 1
-    text_size: self.width, self.height - dp(12)
+    text_size: self.width, self.height - dp(6)
     halign: "left"
     valign: "middle"
     max_lines: 2
     line_height: 1.08
     font_name: "DMSansMedium"
-    font_size: sp(21) if len(self.text) <= 34 else sp(17)
+    # tamanho por comprimento: linhas curtas maiores; as mais longas cabem em 1-2 linhas
+    font_size: sp(18) if len(self.text) <= 30 else (sp(15) if len(self.text) <= 40 else sp(13))
 
 # Uma linha do cartão "Prévia da letra". 'destaque' = a linha cantada agora (maior, negrito).
 <LinhaPrevia@Label>:
@@ -1761,16 +1978,24 @@
                             size_hint_y: None
                             height: dp(28)
                     BotaoRedondo:
+                        icone: "arquivos/icones/coracao_cheio.png" if app.id_atual in app.favoritos else "arquivos/icones/coracao.png"
+                        tinta: (1, .27, .3, 1) if app.id_atual in app.favoritos else (1, 1, 1, .9)
+                        size: dp(42), dp(42)
+                        tam_icone: dp(22)
+                        pos_hint: {"center_y": .5}
+                        on_release: app.alternar_favorita(app.id_atual)
+                    BotaoRedondo:
                         icone: "arquivos/icones/mais.png"
                         size: dp(42), dp(42)
                         tam_icone: dp(22)
                         pos_hint: {"center_y": .5}
-                        on_release: Animation(scroll_y=0, duration=.5, t="out_quad").start(rolagem)
+                        on_release: app.abrir_menu_musica(app.id_atual, app.titulo_atual, app.artista_atual, app.capa_atual, True)
 
                 # Só a linha cantada agora (letras sincronizadas); toque abre a letra inteira.
                 LinhaDaLetra:
                     text: root.letra_linha
-                    color: 1, 1, 1, root.letra_alfa
+                    # cinza (um pouco mais claro que o nome do artista) e piscando de leve ao trocar
+                    color: .74, .75, .82, root.letra_alfa
 
                 BarraProgresso:
                     id: barra
@@ -2129,26 +2354,65 @@
 # TELA: ARTISTAS (lista) - abre pelo "Banco de dados" do menu
 # ======================================================================
 <LinhaArtista>:
+    orientation: "vertical"
     size_hint_y: None
-    height: dp(60)
-    spacing: dp(14)
+    height: self.width * 1.2
+    padding: dp(12), dp(16), dp(12), dp(12)
+    spacing: dp(6)
     canvas.before:
         Color:
-            rgba: (1, 1, 1, .08) if self.state == "down" else (0, 0, 0, 0)
+            rgba: 1, 1, 1, (.15 if self.state == "down" else .06)
         RoundedRectangle:
             pos: self.pos
             size: self.size
-            radius: [dp(14)]
+            radius: [dp(28)]
+        Color:
+            rgba: 1, 1, 1, .12
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(28)]
+            texture: app.gradiente
+        Color:
+            rgba: 1, 1, 1, .2
+        Line:
+            rounded_rectangle: self.x, self.y, self.width, self.height, dp(28)
+            width: dp(1)
+        Color:
+            rgba: 1, 1, 1, .45
+        Line:
+            points: self.x + dp(28), self.top - dp(.5), self.right - dp(28), self.top - dp(.5)
+            width: dp(1)
+        # anel de vidro em volta da foto
+        Color:
+            rgba: 1, 1, 1, .28
+        Line:
+            circle: self.center_x, self.top - dp(16) - self.width * .26, self.width * .26 + dp(5)
+            width: dp(1.2)
     ImagemArredondada:
         size_hint: None, None
-        size: dp(48), dp(48)
-        pos_hint: {"center_y": .5}
-        raio: dp(24)          # metade do tamanho = círculo perfeito
+        size: root.width * .52, root.width * .52
+        pos_hint: {"center_x": .5}
+        raio: self.width / 2          # metade do tamanho = círculo perfeito
         source: root.logo
+    Widget:
+        size_hint_y: None
+        height: dp(2)
     Texto:
         text: root.nome
         font_name: "DMSansMedium"
-        font_size: "22sp"
+        font_size: "16sp"
+        halign: "center"
+        valign: "middle"
+        shorten: False
+        max_lines: 2
+    Texto:
+        text: root.detalhe
+        font_size: "12sp"
+        halign: "center"
+        color: COR_CINZA
+        size_hint_y: None
+        height: dp(16)
 
 <TelaArtistas>:
     BoxLayout:
@@ -2160,24 +2424,33 @@
                 orientation: "vertical"
                 size_hint_y: None
                 height: self.minimum_height
-                padding: dp(16), dp(14), dp(16), dp(16)
+                padding: dp(16), dp(14), dp(16), dp(20)
                 spacing: dp(6)
                 BotaoVoltar:
                     on_release: app.voltar_tela()
                 Texto:
                     text: "Artistas"
                     bold: True
-                    font_size: "36sp"
+                    font_size: "40sp"
                     shorten: False
                     size_hint_y: None
-                    height: dp(56)
-                # as linhas são criadas pelo main.py (TelaArtistas.montar)
-                BoxLayout:
+                    height: dp(58)
+                Texto:
+                    text: root.resumo
+                    font_size: "15sp"
+                    color: COR_CINZA
+                    size_hint_y: None
+                    height: dp(24)
+                Widget:
+                    size_hint_y: None
+                    height: dp(8)
+                # os cartões são criados pelo main.py (TelaArtistas.montar)
+                GridLayout:
                     id: lista_artistas
-                    orientation: "vertical"
+                    cols: 2
                     size_hint_y: None
                     height: self.minimum_height
-                    spacing: dp(8)
+                    spacing: dp(12)
         MiniPlayer:
 
 # ======================================================================
@@ -2190,10 +2463,11 @@
     halign: "justify"
     valign: "top"
     font_size: "14sp"
-    line_height: 1.1
-    color: .8, .8, .8, 1
+    line_height: 1.12
+    color: .88, .89, .96, 1
 
 <LinhaInfo>:
+    markup: True
     size_hint_y: None
     text_size: self.width, None
     height: self.texture_size[1]
@@ -2201,7 +2475,26 @@
     valign: "top"
     font_size: "15sp"
     line_height: 1.1
-    color: COR_CINZA
+    color: .88, .89, .96, 1
+
+# Álbum do carrossel da discografia: capa quadrada + nome
+<CartaoAlbumMini>:
+    orientation: "vertical"
+    size_hint: None, None
+    size: dp(128), dp(178)
+    spacing: dp(6)
+    opacity: .75 if self.state == "down" else 1
+    ImagemArredondada:
+        size_hint: None, None
+        size: dp(128), dp(128)
+        raio: dp(20)
+        source: root.capa
+    Texto:
+        text: root.nome
+        font_size: "13sp"
+        valign: "top"
+        shorten: False
+        max_lines: 2
 
 # Capa da discografia: sempre quadrada (a altura acompanha a largura da coluna)
 <CapaAlbum>:
@@ -2240,116 +2533,121 @@
                 size_hint_y: None
                 height: self.minimum_height
                 padding: dp(16), dp(14), dp(16), dp(24)
-                spacing: dp(10)
+                spacing: dp(14)
 
                 BotaoVoltar:
                     on_release: app.voltar_tela()
 
-                # Cabeçalho: fotinho redonda + nome
-                BoxLayout:
+                # Capa da página: foto grande (cortada p/ preencher, sem esticar) e,
+                # por cima, uma barra de vidro com a fotinho redonda, o nome e o resumo.
+                FloatLayout:
+                    id: hero
                     size_hint_y: None
-                    height: dp(52)
-                    spacing: dp(10)
+                    height: self.width * .74
                     ImagemArredondada:
-                        size_hint: None, None
-                        size: dp(44), dp(44)
-                        pos_hint: {"center_y": .5}
-                        raio: dp(22)
-                        source: root.logo
-                    Texto:
-                        text: root.nome
-                        bold: True
-                        font_size: "32sp" if len(root.nome) <= 11 else "26sp"
-
-                # Foto do artista: proporção fixa; a imagem é cortada para preencher (sem esticar)
-                BoxLayout:
-                    size_hint_y: None
-                    height: (self.width - dp(60)) * 0.545
-                    padding: dp(30), 0
-                    ImagemArredondada:
-                        raio: dp(28)
+                        size_hint: 1, 1
+                        pos_hint: {"x": 0, "y": 0}   # sem isto o FloatLayout não move a foto junto com a rolagem
+                        raio: dp(34)
                         source: root.foto
+                    Widget:     # escurece o fundo da barra para o texto ler bem sobre qualquer foto
+                        size_hint: None, None
+                        size: hero.width - dp(24), dp(80)
+                        pos: hero.x + dp(12), hero.y + dp(12)
+                        canvas:
+                            Color:
+                                rgba: 0, 0, 0, .5
+                            RoundedRectangle:
+                                pos: self.pos
+                                size: self.size
+                                radius: [dp(28)]
+                    CartaoVidro:
+                        size_hint: None, None
+                        size: hero.width - dp(24), dp(80)
+                        pos: hero.x + dp(12), hero.y + dp(12)
+                        raio: dp(28)
+                        padding: dp(14), dp(10)
+                        spacing: dp(12)
+                        ImagemArredondada:
+                            size_hint: None, None
+                            size: dp(54), dp(54)
+                            pos_hint: {"center_y": .5}
+                            raio: dp(27)
+                            source: root.logo
+                        BoxLayout:
+                            orientation: "vertical"
+                            Texto:
+                                text: root.nome
+                                bold: True
+                                font_size: "26sp" if len(root.nome) <= 12 else "21sp"
+                                valign: "bottom"
+                            Texto:
+                                text: root.resumo
+                                font_size: "13sp"
+                                valign: "top"
+                                color: COR_CINZA
 
-                Texto:
-                    text: "Biografia"
-                    bold: True
-                    font_size: "26sp"
-                    shorten: False
-                    size_hint_y: None
-                    height: dp(46)
-                # os parágrafos são criados pelo main.py (TelaArtista.carregar)
-                BoxLayout:
-                    id: caixa_bio
-                    orientation: "vertical"
-                    size_hint_y: None
-                    height: self.minimum_height
-                    spacing: dp(6)
-                    padding: dp(4), 0
-
-                Widget:
-                    size_hint_y: None
-                    height: dp(6)
-
-                # Cartão: Discografia (capas de 3 em 3; "Ver mais" mostra todas)
+                # Cartão: Biografia (os parágrafos são criados pelo main.py)
                 CartaoInfo:
-                    height: self.minimum_height if root.tem_albuns else 0
-                    opacity: 1 if root.tem_albuns else 0
-                    padding: dp(14), dp(18), dp(14), dp(14)
-                    spacing: dp(14)
+                    padding: dp(22), dp(18), dp(22), dp(20)
+                    spacing: dp(10)
                     Texto:
-                        text: "Discografia"
+                        text: "Biografia"
                         bold: True
-                        font_size: "26sp"
+                        font_size: "24sp"
                         shorten: False
                         size_hint_y: None
                         height: dp(34)
-                        padding_x: dp(6)
-                    GridLayout:
-                        id: grade_albuns
-                        cols: 2 if self.width < dp(320) else 3
-                        spacing: dp(22), dp(16)
+                    BoxLayout:
+                        id: caixa_bio
+                        orientation: "vertical"
                         size_hint_y: None
                         height: self.minimum_height
-                    BotaoCaixa:
-                        size_hint_y: None
-                        height: dp(34) if root.tem_mais else 0
-                        opacity: 1 if root.tem_mais else 0
-                        disabled: not root.tem_mais
                         spacing: dp(8)
-                        on_release: root.alternar_discografia()
-                        Widget:
-                        Label:
-                            text: "Ver menos" if root.expandido else "Ver mais"
-                            font_name: "DMSansMedium"
-                            font_size: "17sp"
-                            size_hint_x: None
-                            width: self.texture_size[0]
-                        SetaCirculo:
-                            pos_hint: {"center_y": .5}
-                            aberto: root.expandido
 
-                Widget:
-                    size_hint_y: None
-                    height: dp(10)
-
-                # Cartão: Integrantes (uma linha por função)
+                # Cartão: Discografia (carrossel: arraste para o lado)
                 CartaoInfo:
-                    padding: dp(24), dp(20), dp(24), dp(22)
+                    height: self.minimum_height if root.tem_albuns else 0
+                    opacity: 1 if root.tem_albuns else 0
+                    padding: dp(22), dp(18), 0, dp(18)
+                    spacing: dp(12)
+                    Texto:
+                        text: "Discografia"
+                        bold: True
+                        font_size: "24sp"
+                        shorten: False
+                        size_hint_y: None
+                        height: dp(34)
+                    ScrollView:
+                        do_scroll_y: False
+                        bar_width: 0
+                        size_hint_y: None
+                        height: dp(178)
+                        GridLayout:
+                            id: grade_albuns
+                            rows: 1
+                            size_hint: None, None
+                            width: self.minimum_width
+                            height: dp(178)
+                            spacing: dp(14)
+                            padding: 0, 0, dp(22), 0
+
+                # Cartão: Integrantes (uma linha por função: função em vermelho, nomes embaixo)
+                CartaoInfo:
+                    padding: dp(22), dp(18), dp(22), dp(20)
                     spacing: dp(10)
                     Texto:
                         text: "Integrantes"
                         bold: True
-                        font_size: "26sp"
+                        font_size: "24sp"
                         shorten: False
                         size_hint_y: None
-                        height: dp(36)
-                    # as linhas são criadas pelo main.py (TelaArtista.carregar)
+                        height: dp(34)
                     BoxLayout:
                         id: caixa_integrantes
                         orientation: "vertical"
                         size_hint_y: None
                         height: self.minimum_height
-                        spacing: dp(8)
+                        spacing: dp(12)
         MiniPlayer:
 
 

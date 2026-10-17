@@ -99,7 +99,7 @@ from pathlib import Path
 
 from kivy.app import App
 from kivy.base import ExceptionHandler, ExceptionManager
-from kivy.animation import Animation
+from kivy.animation import Animation, AnimationTransition
 from kivy.clock import Clock
 from kivy.core.image import Image as CoreImage
 from kivy.core.text import LabelBase
@@ -120,14 +120,14 @@ from kivy.uix.recycleview import RecycleView
 from kivy.uix.screenmanager import Screen, ScreenManager, SlideTransition
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.widget import Widget
-from kivy.utils import platform
+from kivy.utils import escape_markup, platform
 
 import db
 import fila
 import letras
 from auth import AuthStore
 from audio import criar_motor
-from db import (_sem_acento, atualizar_reproducao, estatisticas_artistas, estatisticas_musicas,
+from db import (_sem_acento, alternar_favorito, atualizar_reproducao, ids_favoritos, estatisticas_artistas, estatisticas_musicas,
                 listar_albuns, listar_musicas, listar_playlists,
                 musicas_da_playlist, registrar_reproducao, resumo_estatisticas)
 from biblioteca import musicas as BIBLIOTECA_MUSICAS
@@ -607,7 +607,64 @@ class BarraProgresso(Widget):
 # Os nomes (numero, titulo...) são IGUAIS às chaves do dicionário que
 # mandamos para o RecycleView: é assim que ele sabe preencher cada linha.
 # ----------------------------------------------------------------------
-class LinhaMusica(ButtonBehavior, BoxLayout):
+
+def entrada_em_cascata(widgets, atraso=.045, duracao=.38, maximo=14):
+    """Os itens surgem um após o outro (fade suave), como nos apps da Apple."""
+    for i, w in enumerate(widgets):
+        w.opacity = 0
+        anim = Animation(opacity=1, duration=duracao, t="out_cubic")
+        Clock.schedule_once(lambda _dt, w=w, anim=anim: anim.start(w), min(i, maximo) * atraso)
+
+
+class ToqueSuave:
+    """Mixin: ao tocar, o item 'afunda' rápido e volta devagar (feedback estilo iOS)."""
+    def on_state(self, _widget, estado):
+        Animation.cancel_all(self, "opacity")
+        Animation(opacity=.55 if estado == "down" else 1,
+                  duration=.07 if estado == "down" else .32, t="out_quad").start(self)
+
+
+class TransicaoIOS(SlideTransition):
+    """Deslize com desaceleração suave (estilo iPhone). As duas telas andam juntas, SEM se
+    sobrepor: as telas do app são de vidro (sem fundo opaco), então sobrepor mostra um fantasma."""
+    def on_progress(self, progression):
+        entra, sai, gerente = self.screen_in, self.screen_out, self.manager
+        x, y = gerente.pos
+        w, h = gerente.size
+        p = AnimationTransition.out_cubic(progression)
+        d = self.direction
+        if d == "left":
+            entra.y = sai.y = y
+            entra.x = x + w * (1 - p)
+            sai.x = x - w * p
+        elif d == "right":
+            entra.y = sai.y = y
+            entra.x = x - w * (1 - p)
+            sai.x = x + w * p
+        elif d == "up":
+            entra.x = sai.x = x
+            entra.y = y - h * (1 - p)
+            sai.y = y + h * p
+        else:
+            entra.x = sai.x = x
+            entra.y = y + h * (1 - p)
+            sai.y = y - h * p
+
+
+class ControleSegmentado(BoxLayout):
+    """Seletor com a 'pílula' deslizante (estilo iPhone). O .kv desenha a pílula em 'indice'."""
+    indice = NumericProperty(0)
+    total = NumericProperty(3)
+
+    def ir_para(self, indice, animar=True):
+        Animation.cancel_all(self, "indice")
+        if animar:
+            Animation(indice=indice, duration=.38, t="out_cubic").start(self)
+        else:
+            self.indice = indice
+
+
+class LinhaMusica(ToqueSuave, ButtonBehavior, BoxLayout):
     """Uma linha da playlist."""
     numero = NumericProperty(0)
     titulo = StringProperty("")
@@ -618,6 +675,47 @@ class LinhaMusica(ButtonBehavior, BoxLayout):
 
     def on_release(self):
         App.get_running_app().root.get_screen("playlist").tocar_a_partir_de(int(self.indice))
+
+    def abrir_menu(self):
+        """Botão dos três pontinhos da linha."""
+        App.get_running_app().abrir_menu_musica(
+            self.id_musica, self.titulo, self.artista, self.capa)
+
+
+class ChipVidro(ButtonBehavior, BoxLayout):
+    """Pílula de vidro clicável dos filtros (o desenho está no .kv)."""
+    texto = StringProperty("")
+    icone = StringProperty("")
+    ativo = BooleanProperty(False)
+    esmaecido = BooleanProperty(False)
+
+
+class LinhaAcaoMenu(ButtonBehavior, BoxLayout):
+    """Uma ação do menu da música (ícone + texto)."""
+    texto = StringProperty("")
+    icone = StringProperty("")
+    tinta = ListProperty([1, 1, 1, 1])
+
+
+class MenuMusica(ModalView):
+    """Menu dos três pontinhos: favoritar e (no player) ver 'Sobre'."""
+    id_musica = NumericProperty(-1)
+    titulo = StringProperty("")
+    artista = StringProperty("")
+    capa = StringProperty("")
+    do_player = BooleanProperty(False)
+
+    def favoritar(self):
+        App.get_running_app().alternar_favorita(self.id_musica)
+        self.dismiss()
+
+    def ver_sobre(self):
+        self.dismiss()
+        try:
+            tela = App.get_running_app().root.get_screen("player")
+            Animation(scroll_y=0, duration=.5, t="out_quad").start(tela.ids.rolagem)
+        except Exception as erro:
+            trilha(f"menu: não consegui rolar até o 'Sobre': {erro!r}")
 
 
 class LinhaFila(ButtonBehavior, BoxLayout):
@@ -690,7 +788,7 @@ class LinhaFila(ButtonBehavior, BoxLayout):
         App.get_running_app().tocar_da_fila(int(self.indice))
 
 
-class CartaoPlaylist(ButtonBehavior, BoxLayout):
+class CartaoPlaylist(ToqueSuave, ButtonBehavior, BoxLayout):
     """Uma playlist no menu."""
     playlist_id = NumericProperty(0)
     nome = StringProperty("")
@@ -701,14 +799,25 @@ class CartaoPlaylist(ButtonBehavior, BoxLayout):
         App.get_running_app().abrir_playlist(int(self.playlist_id))
 
 
-class LinhaArtista(ButtonBehavior, BoxLayout):
+class LinhaArtista(ToqueSuave, ButtonBehavior, BoxLayout):
     """Um artista na lista 'Artistas' (fotinho redonda + nome)."""
     artista_id = NumericProperty(0)
     nome = StringProperty("")
     logo = StringProperty("")
+    detalhe = StringProperty("")   # ex.: "3 álbuns"
 
     def on_release(self):
         App.get_running_app().abrir_artista(int(self.artista_id))
+
+
+class CartaoAlbumMini(ButtonBehavior, BoxLayout):
+    """Capa + nome do álbum no carrossel da discografia. Tocar abre o álbum."""
+    album_id = NumericProperty(0)
+    capa = StringProperty("")
+    nome = StringProperty("")
+
+    def on_release(self):
+        App.get_running_app().abrir_album(int(self.album_id))
 
 
 class CapaAlbum(ButtonBehavior, ImagemArredondada):
@@ -719,7 +828,7 @@ class CapaAlbum(ButtonBehavior, ImagemArredondada):
         App.get_running_app().abrir_album(int(self.album_id))
 
 
-class LinhaMusicaAlbum(ButtonBehavior, BoxLayout):
+class LinhaMusicaAlbum(ToqueSuave, ButtonBehavior, BoxLayout):
     """Uma música na página do álbum (título + artista)."""
     titulo = StringProperty("")
     artista = StringProperty("")
@@ -887,6 +996,7 @@ class TelaMenu(Screen):
                 subtitulo=f"Playlist - {n} {'Música' if n == 1 else 'Músicas'}",
                 capa=capa_da_playlist(p["nome"]),
             ))
+        entrada_em_cascata(caixa.children[::-1])
 
 
 class TelaAcesso(Screen):
@@ -945,11 +1055,19 @@ class TelaEstatisticas(Screen):
 
     def selecionar_aba(self, aba):
         self.aba = aba
+        self._mover_pilula("ctl_aba", ("musicas", "artistas", "geral"), aba)
         self.atualizar()
 
     def selecionar_periodo(self, periodo):
         self.periodo = periodo
+        self._mover_pilula("ctl_periodo", ("semana", "mes", "ano"), periodo)
         self.atualizar()
+
+    def _mover_pilula(self, id_controle, opcoes, valor):
+        try:
+            self.ids[id_controle].ir_para(opcoes.index(valor))
+        except Exception as erro:
+            trilha(f"pílula do seletor: {erro!r}")
 
     def _periodo_desde(self):
         agora = datetime.now()
@@ -1028,6 +1146,7 @@ class TelaEstatisticas(Screen):
             cartoes.bind(minimum_height=cartoes.setter("height"))
             for rotulo, valor in metricas:
                 cartoes.add_widget(CartaoResumo(rotulo=rotulo, valor=valor))
+            entrada_em_cascata(cartoes.children[::-1], atraso=.07)
             scroll.add_widget(cartoes)
             caixa.add_widget(scroll)
 
@@ -1040,6 +1159,7 @@ class TelaEstatisticas(Screen):
                 coluna.bind(minimum_height=coluna.setter("height"))
                 for dado in dados:
                     coluna.add_widget(LinhaEstatistica(**dado))
+                entrada_em_cascata(coluna.children[::-1])
                 rolagem.add_widget(coluna)
                 caixa.add_widget(rolagem)
         self._assinatura = assinatura
@@ -1069,83 +1189,107 @@ class TelaEstatisticas(Screen):
             self.mensagem = f"Falha ao preparar a captura ({type(erro).__name__})."
 
     def _preparar_captura(self):
-        from kivy.graphics import Color, Rectangle
+        """Imagem 9:16 (1080x1920) no estilo 'Wrapped': capa grande, Top Artistas / Top Músicas,
+        minutos ouvidos e reproduções. A cor de destaque vem da capa da música nº 1."""
+        from kivy.graphics import Color, Ellipse, PopMatrix, PushMatrix, Rectangle, Rotate
         app = App.get_running_app()
         self.atualizar()
         self.mensagem = "Gerando captura…"
         resumo = self._resumo
-        segundos = int(resumo.get("segundos_ouvidos") or 0)
-        tempo = f"{segundos // 3600} h {(segundos % 3600) // 60} min"
-        plural = lambda n: "reprodução" if n == 1 else "reproduções"
+        minutos = int((resumo.get("segundos_ouvidos") or 0) // 60)
+        W, H, TOPO = 1080, 1920, 1080
+        MESES = ("JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO",
+                 "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO")
+        titulo_grande = MESES[datetime.now().month - 1] if self.periodo == "mes" else str(datetime.now().year)
 
-        if self.aba == "geral":
-            nome_aba = "Geral"
-            linhas = [
-                ("Reproduções (30 s ou mais)", "", str(resumo.get("reproducoes", 0))),
-                ("Músicas diferentes", "", str(resumo.get("musicas_diferentes", 0))),
-                ("Artistas ouvidos", "", str(resumo.get("artistas_diferentes", 0))),
-                ("Tempo ouvindo", "", tempo),
-                ("Faixas completas", "", str(resumo.get("completas", 0))),
-            ]
-        elif self.aba == "artistas":
-            nome_aba = "Artistas"
-            linhas = [(f"{i}. {nome_na_tela(x['nome'])}", f"{x['musicas_diferentes']} músicas diferentes",
-                       f"{x['reproducoes']} {plural(x['reproducoes'])}")
-                      for i, x in enumerate(self._artistas[:10], 1)]
-        else:
-            nome_aba = "Músicas"
-            linhas = [(f"{i}. {x['titulo']}", x["artista"],
-                       f"{x['reproducoes']} {plural(x['reproducoes'])}")
-                      for i, x in enumerate(self._musicas[:10], 1)]
-        if not linhas:
-            linhas = [("Ainda não há reproduções neste período.", "", "")]
+        # Imagem de destaque: FOTO do artista nº 1 (a capa do álbum fica só nas listas do app)
+        foto_topo = ""
+        if self._artistas:
+            try:
+                top = {"id": self._artistas[0]["id"], "nome": self._artistas[0]["nome"]}
+                perfil = montar_perfil(top, _achar)
+                foto_topo = perfil.get("foto") or perfil.get("logo") or ""
+            except Exception as erro:
+                trilha(f"foto do artista na captura: {erro!r}")
+            if not foto_topo:
+                foto_topo = logo_do_artista(top, _achar)
+        if not foto_topo and self._musicas:
+            foto_topo = _achar(self._musicas[0].get("capa"))
+        acento = (0.91, 0.12, 0.12, 1)
+        if foto_topo:
+            try:
+                r, g, b = _cor_dominante(_textura_compartilhada(resource_find(foto_topo) or foto_topo))[:3]
+                m = max(r, g, b, .01)
+                acento = (r / m * .95, g / m * .95, b / m * .95, 1)
+            except Exception as erro:
+                trilha(f"cor de destaque da captura: {erro!r}")
 
-        largura, margem = 1080, 60
-        relatorio = BoxLayout(
-            orientation="vertical", size_hint=(None, None),
-            size=(largura, 420 + 124 * len(linhas)),
-            padding=(margem, 56, margem, 40), spacing=10,
-        )
-        with relatorio.canvas.before:
+        relatorio = Widget(size_hint=(None, None), size=(W, H))
+        with relatorio.canvas:
+            Color(.165, .165, .165, 1)
+            Rectangle(pos=(0, 0), size=(W, H))
             Color(.07, .07, .07, 1)
-            fundo = Rectangle(pos=relatorio.pos, size=relatorio.size)
-        relatorio.bind(pos=lambda w, v: setattr(fundo, "pos", v),
-                       size=lambda w, v: setattr(fundo, "size", v))
+            Rectangle(pos=(0, H - TOPO), size=(W, TOPO))
+            Color(.93, .93, .90, 1)                       # bolinhas na borda do topo
+            for k in range(10):
+                Ellipse(pos=(k * 118 - 10, H - TOPO - 31), size=(62, 62))
+            for k in range(8):                            # e na lateral direita
+                Ellipse(pos=(W - 40, H - TOPO + 40 + k * 118), size=(62, 62))
 
-        def rotulo(texto, tamanho, altura, cor=(1, 1, 1, 1), alinhar="left", negrito=False):
-            r = Label(text=texto, font_size=tamanho, color=cor, bold=negrito,
-                      halign=alinhar, valign="middle", size_hint_y=None, height=altura,
-                      shorten=True, shorten_from="right")
-            r.bind(size=lambda w, s: setattr(w, "text_size", s))
+        def rotulo(texto, tam, x, y, w, h=None, cor=(1, 1, 1, 1), alinhar="left", negrito=False):
+            h = h or int(tam * 1.5)
+            r = Label(text=texto, font_size=tam, color=cor, bold=negrito, font_name="DMSansMedium",
+                      halign=alinhar, valign="middle", size_hint=(None, None), size=(w, h),
+                      pos=(x, y), text_size=(w, h), shorten=True, shorten_from="right")
+            relatorio.add_widget(r)
             return r
 
-        relatorio.add_widget(rotulo("My Music Gospel", 58, 96, (.91, .12, .12, 1), negrito=True))
-        relatorio.add_widget(rotulo(f"Estatísticas • {nome_aba} • {self._nome_periodo()}",
-                                    30, 56, (.75, .75, .75, 1)))
-        relatorio.add_widget(rotulo(
-            f"{resumo.get('reproducoes', 0)} {plural(resumo.get('reproducoes', 0))} • {tempo} ouvindo",
-            32, 70))
-        for principal, secundario, valor in linhas:
-            linha = BoxLayout(size_hint_y=None, height=114, spacing=12)
-            esquerda = BoxLayout(orientation="vertical")
-            esquerda.add_widget(rotulo(principal, 34, 60, negrito=True))
-            if secundario:
-                esquerda.add_widget(rotulo(secundario, 25, 44, (.6, .6, .6, 1)))
-            linha.add_widget(esquerda)
-            direita = rotulo(valor, 30, 114, (.91, .12, .12, 1), alinhar="right", negrito=True)
-            direita.size_hint_x = None
-            direita.width = 330
-            linha.add_widget(direita)
-            relatorio.add_widget(linha)
-        relatorio.add_widget(Widget())
-        relatorio.add_widget(rotulo(
-            f"{app.usuario_atual} • {datetime.now():%d/%m/%Y %H:%M} • contam reproduções de 30 s ou mais",
-            24, 48, (.5, .5, .5, 1)))
+        # título gigante na vertical (ano, ou nome do mês), na cor de destaque, atrás da foto
+        tam = int(min(380, 930 / (max(len(titulo_grande), 4) * .64)))
+        ano = Label(text=titulo_grande, font_size=tam, bold=True, font_name="DMSansMedium",
+                    color=acento, size_hint=(None, None), size=(1100, 460), pos=(-440, H - 790))
+        with ano.canvas.before:
+            PushMatrix()
+            Rotate(angle=90, origin=(ano.x + ano.width / 2, ano.y + ano.height / 2))
+        with ano.canvas.after:
+            PopMatrix()
+        relatorio.add_widget(ano)
+
+        moldura = Widget(size_hint=(None, None), size=(836, 836), pos=(222, H - 70 - 828))
+        with moldura.canvas:
+            Color(.96, .96, .94, 1)
+            Rectangle(pos=moldura.pos, size=moldura.size)
+        relatorio.add_widget(moldura)
+        relatorio.add_widget(ImagemArredondada(
+            source=foto_topo, size_hint=(None, None), size=(820, 820), pos=(230, H - 70 - 820), raio=0))
+
+        # duas colunas: Top Artistas | Top Músicas
+        cinza = (.62, .62, .62, 1)
+        colunas = (
+            (70, "Top Artistas", [nome_na_tela(x["nome"]) for x in self._artistas[:5]]),
+            (570, "Top Músicas", [x["titulo"] for x in self._musicas[:5]]),
+        )
+        for x, titulo, itens in colunas:
+            rotulo(titulo, 46, x, 730, 450, negrito=True)
+            for n in range(5):
+                texto = f"{n + 1}  {itens[n]}" if n < len(itens) else f"{n + 1}  —"
+                rotulo(texto, 42, x, 650 - n * 66, 450, 62, cor=(1, 1, 1, 1) if n < len(itens) else cinza)
+
+        rotulo("Minutos ouvidos", 46, 70, 310, 450, negrito=True)
+        rotulo(f"{minutos:,}".replace(",", "."), 110, 70, 170, 470, 140, negrito=True)
+        rotulo("Reproduções", 46, 570, 310, 450, negrito=True)
+        rotulo(str(resumo.get("reproducoes", 0)), 110, 570, 170, 470, 140, negrito=True)
+        rotulo(f"{app.usuario_atual}  •  {self._nome_periodo()}  •  reprodução = 30 s ou mais",
+               28, 70, 128, 940, 44, cor=cinza)
+
+        relatorio.add_widget(ImagemArredondada(
+            source=_achar("arquivos/icones/icon.png"), size_hint=(None, None),
+            size=(96, 96), pos=(70, 22), raio=48))
+        rotulo("MY MUSIC GOSPEL", 44, 300, 22, 710, 96, alinhar="right", negrito=True)
 
         def salvar(_dt):
             temporario = None
             try:
-                relatorio.do_layout()
                 for filho in relatorio.walk():
                     if isinstance(filho, Label):
                         filho.texture_update()
@@ -1171,7 +1315,7 @@ class TelaEstatisticas(Screen):
                     except OSError as erro:
                         trilha(f"falha ao limpar captura temporária: {erro!r}")
 
-        Clock.schedule_once(salvar, 0.3)
+        Clock.schedule_once(salvar, 0.7)   # espera o fade das imagens terminar
 
     def _salvar_em_downloads(self, temporario, nome):
         if platform == "android":
@@ -1233,18 +1377,32 @@ class TelaEstatisticas(Screen):
         return str(destino)
 
 
+def _plural(n, singular, plural):
+    return f"{n} {singular if n == 1 else plural}"
+
+
 class TelaArtistas(Screen):
-    """Lista de artistas (abre ao tocar em 'Banco de dados' no menu)."""
+    """Grade de artistas (abre ao tocar em 'Artistas' no menu)."""
+    resumo = StringProperty("")
 
     def montar(self):
         caixa = self.ids.lista_artistas
         caixa.clear_widgets()
-        for artista in artistas_ordenados():
+        artistas = artistas_ordenados()
+        albuns = listar_albuns()
+        por_artista = {}
+        for album in albuns:
+            por_artista[album["artista_id"]] = por_artista.get(album["artista_id"], 0) + 1
+        self.resumo = (f"{_plural(len(artistas), 'artista', 'artistas')} · "
+                       f"{_plural(len(albuns), 'álbum', 'álbuns')}")
+        for artista in artistas:
             caixa.add_widget(LinhaArtista(
                 artista_id=artista["id"],
                 nome=nome_na_tela(artista["nome"]),
                 logo=logo_do_artista(artista, _achar),
+                detalhe=_plural(por_artista.get(artista["id"], 0), "álbum", "álbuns"),
             ))
+        entrada_em_cascata(caixa.children[::-1], atraso=.03)
 
 
 class TelaArtista(Screen):
@@ -1252,6 +1410,7 @@ class TelaArtista(Screen):
     nome = StringProperty("")
     logo = StringProperty("")
     foto = StringProperty("")
+    resumo = StringProperty("")           # ex.: "3 álbuns · 24 músicas"
     tem_albuns = BooleanProperty(False)
     tem_mais = BooleanProperty(False)     # True = há mais de 3 álbuns (mostra 'Ver mais')
     expandido = BooleanProperty(False)    # True = discografia completa na tela
@@ -1278,12 +1437,15 @@ class TelaArtista(Screen):
         integrantes = self.ids.caixa_integrantes
         integrantes.clear_widgets()
         for funcao, nomes in perfil["integrantes"]:
-            integrantes.add_widget(LinhaInfo(text=f"{funcao}: {nomes}"))
+            integrantes.add_widget(LinhaInfo(
+                text=f"[color=ff5a64][b]{escape_markup(funcao)}[/b][/color]\n{escape_markup(nomes)}"))
 
         self._albuns = perfil["albuns"]
         self.tem_albuns = bool(self._albuns)
-        self.tem_mais = len(self._albuns) > self.ALBUNS_RESUMO
+        self.tem_mais = False          # a discografia agora é um carrossel com todos os álbuns
         self.expandido = False
+        self.resumo = (f"{_plural(len(self._albuns), 'álbum', 'álbuns')} · "
+                       f"{_plural(int(artista.get('total_musicas') or 0), 'música', 'músicas')}")
         self._mostrar_capas()
         self.ids.rolagem.scroll_y = 1   # sempre abre no topo
 
@@ -1295,9 +1457,9 @@ class TelaArtista(Screen):
     def _mostrar_capas(self):
         grade = self.ids.grade_albuns
         grade.clear_widgets()
-        visiveis = self._albuns if self.expandido else self._albuns[:self.ALBUNS_RESUMO]
-        for album in visiveis:
-            grade.add_widget(CapaAlbum(source=album["capa"], album_id=album["id"]))
+        for album in self._albuns:
+            grade.add_widget(CartaoAlbumMini(
+                capa=album["capa"], album_id=album["id"], nome=album["nome"]))
 
     def alternar_discografia(self):
         self.expandido = not self.expandido
@@ -1356,9 +1518,15 @@ class TelaPlaylist(Screen):
     subtitulo = StringProperty("")
     capa_playlist = StringProperty("")
     busca_aberta = BooleanProperty(False)
+    # Filtros: "padrao" (ordem da playlist), "titulo", "artista" ou "album"
+    ordem_por = StringProperty("padrao")
+    crescente = BooleanProperty(True)
+    favoritos_em_cima = BooleanProperty(False)
+    filtros_abertos = BooleanProperty(False)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self._texto = ""
         self.playlist_id = None
         self.musicas = []   # todas as músicas da playlist
         self.visiveis = []  # as que aparecem (muda quando você busca)
@@ -1370,8 +1538,37 @@ class TelaPlaylist(Screen):
         self.subtitulo = f"Playlist - {playlist['total_musicas']} Músicas"
         self.capa_playlist = capa_da_playlist(playlist["nome"])
         self.busca_aberta = False
+        self._texto = ""
         self.ids.campo_busca.text = ""
-        self.mostrar(self.musicas)
+        self.reaplicar()
+
+    def reaplicar(self):
+        """Busca + ordenação + 'favoritos em cima' -> o que aparece na lista."""
+        t = _sem_acento(self._texto)
+        lista = [m for m in self.musicas
+                 if not t or t in _sem_acento(m["titulo"] + " " + m["artista"])]
+        chave = self.ordem_por
+        if chave != "padrao":
+            lista.sort(key=lambda m: (_sem_acento(m.get(chave) or ""),
+                                      _sem_acento(m["titulo"])),
+                       reverse=not self.crescente)
+        if self.favoritos_em_cima:
+            favoritas = set(App.get_running_app().favoritos)
+            lista.sort(key=lambda m: m["id"] not in favoritas)  # estável: mantém a ordem
+        self.mostrar(lista)
+
+    def definir_ordem(self, chave):
+        self.ordem_por = chave
+        self.reaplicar()
+
+    def alternar_direcao(self):
+        if self.ordem_por != "padrao":
+            self.crescente = not self.crescente
+            self.reaplicar()
+
+    def alternar_favoritos_em_cima(self):
+        self.favoritos_em_cima = not self.favoritos_em_cima
+        self.reaplicar()
 
     def mostrar(self, lista):
         """Entrega a lista ao RecycleView: UMA lista de DICIONÁRIOS."""
@@ -1397,13 +1594,13 @@ class TelaPlaylist(Screen):
     def alternar_busca(self):
         self.busca_aberta = not self.busca_aberta
         if not self.busca_aberta:
+            self._texto = ""
             self.ids.campo_busca.text = ""
-            self.mostrar(self.musicas)  # fechou a busca: volta a lista completa
+            self.reaplicar()  # fechou a busca: volta a lista completa
 
     def filtrar(self, texto):
-        t = _sem_acento(texto)  # ignora acento e maiúscula
-        self.mostrar([m for m in self.musicas
-                      if t in _sem_acento(m["titulo"] + " " + m["artista"])])
+        self._texto = texto  # ignora acento e maiúscula (em reaplicar)
+        self.reaplicar()
 
     # ---------------- BOTÕES ----------------
     def tocar_a_partir_de(self, indice):
@@ -1718,6 +1915,7 @@ class MainApp(App):
     capa_atual = StringProperty("")
     cor_capa = ListProperty([.12, .12, .12, 1])
     gradiente = ObjectProperty(None)
+    favoritos = ListProperty([])   # ids das músicas favoritas (o .kv reage a mudanças)
     tex_orb = ObjectProperty(None, allownone=True)
 
     def on_capa_atual(self, _instancia, caminho):
@@ -1812,6 +2010,10 @@ class MainApp(App):
             preparar_banco(self.user_data_dir)
 
         db.criar_banco()
+        try:
+            self.favoritos = ids_favoritos()
+        except Exception as erro:
+            trilha(f"favoritos: não consegui carregar: {erro!r}")
         # Atualiza o catálogo em instalações que já tinham um banco persistente.
         self._importar_se_mudou()
         db.limpar_historico_vazio()
@@ -1821,7 +2023,7 @@ class MainApp(App):
             trilha(f"durações pendentes: {erro!r}")
         self.auth_store = AuthStore(Path(self.user_data_dir) / "contas.db")
 
-        gerenciador = ScreenManager(transition=SlideTransition(duration=0.2))
+        gerenciador = ScreenManager(transition=TransicaoIOS(duration=0.36))
         for classe, nome in ((TelaAcesso, "acesso"), (TelaMenu, "menu"),
                              (TelaEstatisticas, "estatisticas"),
                              (TelaPlaylist, "playlist"),
@@ -1840,15 +2042,31 @@ class MainApp(App):
         return raiz  # o "root" do app
 
     def _importar_se_mudou(self):
-        """Só reimporta o biblioteca.py quando ele mudou (abertura bem mais rápida)."""
+        """
+        Reimporta o biblioteca.py quando ele mudou OU quando o banco está incompleto.
+
+        Antes só valia a "marca" (hash do biblioteca.py) guardada na pasta de dados
+        do Kivy, SEPARADA do banco. Se a marca dizia "já importei" mas o banco era
+        outro (cópia nova do projeto, banco restaurado, atualização...), as músicas
+        novas nunca apareciam. Agora:
+          1) a marca é guardada POR BANCO (o nome do arquivo leva o caminho dele);
+          2) mesmo com a marca igual, se falta no banco QUALQUER faixa do
+             biblioteca.py, importa. O banco manda; a marca só evita trabalho à toa.
+        """
         try:
+            import biblioteca
             marca = hashlib.md5((db.BASE_DIR / "biblioteca.py").read_bytes()).hexdigest()
             marca += f"-{db.VERSAO_SCHEMA}"
-            arquivo = Path(self.user_data_dir) / "biblioteca.hash"
+            id_banco = hashlib.md5(str(db.BANCO).encode("utf-8")).hexdigest()[:8]
+            arquivo = Path(self.user_data_dir) / f"biblioteca-{id_banco}.hash"
+            esperados = {m["arquivo"] for m in biblioteca.musicas.values()}
             with db.conexao() as con:
-                vazio = con.execute("SELECT COUNT(*) FROM musicas").fetchone()[0] == 0
-            if not vazio and arquivo.exists() and arquivo.read_text() == marca:
+                no_banco = {linha[0] for linha in con.execute("SELECT arquivo FROM musicas")}
+            faltam = esperados - no_banco
+            if not faltam and arquivo.exists() and arquivo.read_text() == marca:
                 return
+            if faltam:
+                trilha(f"{len(faltam)} faixa(s) do biblioteca.py faltavam no banco; importando")
             db.importar_biblioteca()
             arquivo.write_text(marca)
         except Exception as erro:
@@ -2090,6 +2308,29 @@ class MainApp(App):
         trilha(f"abrir_artista_atual: '{self.artista_atual}' não está na lista de artistas")
 
     # ---------------- FILA ----------------
+    # ---------------- FAVORITOS / MENU DA MÚSICA ----------------
+    def alternar_favorita(self, id_musica):
+        id_musica = int(id_musica)
+        if id_musica < 0:
+            return False
+        ficou = alternar_favorito(id_musica)
+        atuais = set(self.favoritos)
+        (atuais.add if ficou else atuais.discard)(id_musica)
+        self.favoritos = sorted(atuais)
+        try:    # com "favoritos em cima" ligado a lista precisa se reordenar
+            tela = self.root.get_screen("playlist")
+            if tela.favoritos_em_cima:
+                tela.reaplicar()
+        except Exception:
+            pass
+        return ficou
+
+    def abrir_menu_musica(self, id_musica, titulo, artista, capa, do_player=False):
+        if int(id_musica) < 0:
+            return
+        MenuMusica(id_musica=int(id_musica), titulo=titulo, artista=artista,
+                   capa=capa, do_player=do_player).open()
+
     def iniciar_fila(self, musicas, comecar_em=None, aleatorio=False, origem=""):
         if not musicas:
             return
